@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>HEIC → JPG/PNG/WebP Bulk Converter</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <style>
+    :root {
+      --bg: #f9fafb; --panel:#ffffff; --muted:#6b7684; --text:#111; --accent:#0077cc; --border:#e2e8f0; --warn:#b45309; --ok:#059669; --error:#b91c1c;
+    }
+    [data-theme="dark"] {
+      --bg: #0b0f14; --panel:#121922; --muted:#97a2af; --text:#e7eef7; --accent:#7fd1b9; --border:#1e2631; --warn:#f59e0b; --ok:#34d399; --error:#ef4444;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; transition: background .3s, color .3s; }
+    header { padding:28px 20px; text-align:center; border-bottom:1px solid var(--border); background:linear-gradient(180deg, var(--panel), var(--bg)); }
+    h1 { margin:0 0 6px; font-size:26px; letter-spacing:.2px; }
+    p.sub { margin:0; color:var(--muted); }
+    .wrap { max-width:1080px; margin:28px auto; padding:0 16px 40px; }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:20px; box-shadow: 0 8px 24px rgba(0,0,0,.08); transition: background .3s, border .3s; }
+    label { display:block; font-weight:600; margin-bottom:6px; }
+    select, input[type="number"], input[type="range"], input[type="text"], button { width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); transition: background .3s, color .3s, border .3s; }
+    select, input[type="range"], button { cursor:pointer; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .row { display:grid; grid-template-columns: 1.2fr 1fr; gap:16px; }
+    @media (max-width: 980px){ .row{ grid-template-columns:1fr; } }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:10px; margin-top:14px; }
+    .card { border:1px solid var(--border); background:var(--bg); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px; position:relative; }
+    .thumb { width:100%; aspect-ratio: 1/1; object-fit:cover; border-radius:8px; background:var(--panel); display:grid; place-items:center; font-size:12px; color:var(--muted); }
+    .x { position:absolute; top:8px; right:8px; background:transparent; border:1px solid var(--border); border-radius:8px; padding:2px 6px; cursor:pointer; }
+    .drop { border:2px dashed var(--border); border-radius:16px; padding:26px; text-align:center; color:var(--muted); transition:.2s ease border-color, .2s ease background; }
+    .drop.drag { border-color: var(--accent); background: rgba(127, 209, 185, .08); }
+    .controls { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; }
+    @media (max-width: 980px){ .controls{ grid-template-columns:1fr 1fr; } }
+    .actions { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; align-items:center; }
+    .btn { background:var(--accent); color:#fff; border:none; font-weight:700; cursor:pointer; transition: background .2s; }
+    .btn.secondary { background:transparent; color: var(--text); border:1px solid var(--border); }
+    .btn.warn { background:var(--warn); color:#111; }
+    .progress { height:10px; background:#cbd5e1; border:1px solid var(--border); border-radius:999px; overflow:hidden; }
+    [data-theme="dark"] .progress { background:#0c1420; }
+    .bar { height:100%; width:0%; background:var(--accent); transition: width .2s ease; }
+    .toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+    .inline { width:auto; }
+    .pill { display:inline-flex; align-items:center; gap:8px; background:var(--bg); border:1px solid var(--border); padding:8px 10px; border-radius:999px; font-size:13px; }
+    .errorlog { margin-top:12px; padding:12px; border-radius:12px; border:1px solid var(--border); background:color-mix(in oklab, var(--error) 12%, transparent); }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; border:1px solid var(--border); border-bottom-width:2px; padding:2px 6px; border-radius:6px; }
+    footer { text-align:center; color:var(--muted); padding:30px 10px; }
+    .note { font-size:13px; color:var(--muted); margin-top:8px; }
+  </style>
+</head>
+<body data-theme="light">
+  <header>
+    <h1>HEIC → JPG/PNG/WebP Bulk Converter</h1>
+    <p class="sub">All in your browser. Drag in HEICs, pick a format, download a .zip.</p>
+  </header>
+
+  <main class="wrap">
+    <div class="panel">
+      <div class="toolbar">
+        <div class="pill">
+          <label for="themeSelect" class="muted">Theme</label>
+          <select id="themeSelect" class="inline">
+            <option value="auto">Auto</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <div class="pill">
+          <label for="preset" class="muted">Preset</label>
+          <select id="preset" class="inline">
+            <option value="custom">Custom</option>
+            <option value="ebay">eBay (JPG 85, 1600px)</option>
+            <option value="vinted">Vinted (JPG 85, 2048px)</option>
+            <option value="depop">Depop (JPG 90, 2000px)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="drop" class="drop" tabindex="0" aria-label="Drop zone. Press Enter to open file picker.">
+        <strong>Drag & drop HEIC/HEIF photos here</strong><br/>
+        or
+        <input id="picker" type="file" accept=".heic,.HEIC,image/heic,image/heif" multiple style="display:block;margin:10px auto 0; max-width:340px;" />
+        <div class="note">All processing happens locally in your browser. No uploads.</div>
+      </div>
+
+      <div class="row">
+        <section>
+          <div class="controls" style="margin:14px 0 8px;">
+            <div>
+              <label for="format">Output format</label>
+              <select id="format">
+                <option value="image/jpeg">JPEG (.jpg)</option>
+                <option value="image/png">PNG (.png)</option>
+                <option value="image/webp">WebP (.webp)</option>
+              </select>
+            </div>
+            <div>
+              <label for="quality">Quality <span id="qLabel" class="muted">80%</span></label>
+              <input id="quality" type="range" min="40" max="100" value="80" />
+              <div class="note">Applies to JPEG/WebP. PNG ignores quality.</div>
+            </div>
+            <div>
+              <label for="maxSize">Max side (px)</label>
+              <input id="maxSize" type="number" min="512" step="64" value="3000" />
+              <div class="note">Optional downscale for faster marketplace uploads.</div>
+            </div>
+            <div>
+              <label for="basename">Filename pattern</label>
+              <input id="basename" placeholder="e.g., {sku}-{index} or ebay_{date}_{index}" />
+              <div class="note">Tokens: {base} original name, {index} 001…, {date} YYYYMMDD, {time} HHmm, {sku} from CSV.</div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="convert" class="btn">Convert & Zip</button>
+            <button id="cancel" class="btn warn" title="Cancel current run" disabled>Cancel</button>
+            <button id="clear" class="btn secondary" title="Remove all queued files">Clear</button>
+            <span id="count" class="muted" aria-live="polite"></span>
+          </div>
+
+          <div style="margin:14px 0">
+            <div class="progress" aria-hidden="true"><div class="bar" id="bar"></div></div>
+            <div id="status" class="muted" style="margin-top:6px;">Idle.</div>
+          </div>
+
+          <div class="pill" style="margin-top:6px; gap:6px;">
+            <span>Tips:</span>
+            <span class="kbd">⌘/Ctrl + O</span> add files
+            <span class="kbd">⌘/Ctrl + Enter</span> convert
+            <span class="kbd">Del</span> clear
+          </div>
+
+          <div id="errors" class="errorlog" style="display:none;" role="status" aria-live="polite"></div>
+        </section>
+
+        <section>
+          <label for="csv">Optional CSV (map names/SKUs)</label>
+          <input id="csv" type="file" accept=".csv" />
+          <div class="note">CSV headers supported: <strong>original,new</strong> or <strong>name,sku</strong>. We’ll use {sku} in your filename pattern.</div>
+          <div id="grid" class="grid" aria-live="polite" aria-busy="false"></div>
+        </section>
+      </div>
+    </div>
+
+    <footer>
+      Built for quick marketplace prep. Works offline after first load.
+    </footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+  <script>
+    // --- Elements
+    const drop = document.getElementById('drop');
+    const picker = document.getElementById('picker');
+    const grid = document.getElementById('grid');
+    const convertBtn = document.getElementById('convert');
+    const cancelBtn = document.getElementById('cancel');
+    const clearBtn = document.getElementById('clear');
+    const countEl = document.getElementById('count');
+    const formatSel = document.getElementById('format');
+    const qualityRange = document.getElementById('quality');
+    const qLabel = document.getElementById('qLabel');
+    const maxSize = document.getElementById('maxSize');
+    const baseName = document.getElementById('basename');
+    const bar = document.getElementById('bar');
+    const statusEl = document.getElementById('status');
+    const errorsEl = document.getElementById('errors');
+    const themeSelect = document.getElementById('themeSelect');
+    const presetSel = document.getElementById('preset');
+    const csvInput = document.getElementById('csv');
+
+    // --- State
+    let files = [];
+    let abort = { cancelled:false };
+    let csvMap = new Map(); // baseName -> sku OR original->new
+
+    // --- Theme: auto/light/dark with persistence + live system sync
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    function resolveTheme(mode){ return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode; }
+    function applyThemeMode(mode){ document.body.setAttribute('data-theme', resolveTheme(mode)); themeSelect.value = mode; localStorage.setItem('themeMode', mode); }
+    const savedMode = localStorage.getItem('themeMode') || 'auto';
+    applyThemeMode(savedMode);
+    themeSelect.addEventListener('change', e=> applyThemeMode(e.target.value));
+    media.addEventListener('change', ()=>{ if ((localStorage.getItem('themeMode')||'auto')==='auto') applyThemeMode('auto'); });
+
+    // --- Presets
+    const presets = {
+      custom: null,
+      ebay:  { format:'image/jpeg', quality:85, max:1600, pattern:'{base}-{index}' },
+      vinted:{ format:'image/jpeg', quality:85, max:2048, pattern:'vinted_{date}_{index}' },
+      depop: { format:'image/jpeg', quality:90, max:2000, pattern:'depop_{date}_{index}' }
+    };
+    presetSel.addEventListener('change', ()=>{
+      const p = presets[presetSel.value];
+      if(!p) return; // custom
+      formatSel.value = p.format;
+      qualityRange.value = p.quality; qLabel.textContent = p.quality+"%";
+      maxSize.value = p.max;
+      if(!baseName.value) baseName.value = p.pattern;
+    });
+
+    // --- Helpers
+    const pad = (num, size=3)=> String(num).padStart(size,'0');
+    function extFor(mime){ return mime==='image/png' ? 'png' : (mime==='image/webp'? 'webp':'jpg'); }
+    function nowStamp(){ const d=new Date(); const yyyy=d.getFullYear(); const mm=pad(d.getMonth()+1,2); const dd=pad(d.getDate(),2); const HH=pad(d.getHours(),2); const MM=pad(d.getMinutes(),2); return {date:`${yyyy}${mm}${dd}`, time:`${HH}${MM}`}; }
+    function fmtName(tpl, base, index){
+      const {date,time}=nowStamp();
+      const sku = csvMap.get(base) || csvMap.get(base.toLowerCase()) || '';
+      return (tpl||'{base}-{index}')
+        .replaceAll('{base}', base)
+        .replaceAll('{index}', pad(index))
+        .replaceAll('{date}', date)
+        .replaceAll('{time}', time)
+        .replaceAll('{sku}', sku);
+    }
+
+    function logError(msg){ errorsEl.style.display='block'; errorsEl.textContent = msg; }
+    function clearErrors(){ errorsEl.style.display='none'; errorsEl.textContent=''; }
+
+    function updateCount(){ countEl.textContent = files.length ? `${files.length} file${files.length>1?'s':''} queued` : ''; }
+
+    function addCard(f){
+      const card = document.createElement('div'); card.className='card';
+      const pre = document.createElement('div'); pre.className='thumb'; pre.textContent='HEIC';
+      const meta = document.createElement('div'); meta.className='muted'; meta.textContent = f.name;
+      const rm = document.createElement('button'); rm.className='x'; rm.textContent='✕'; rm.title='Remove';
+      rm.addEventListener('click', ()=>{ files = files.filter(x=>x!==f); grid.removeChild(card); updateCount(); });
+      card.append(pre, meta, rm); grid.appendChild(card);
+      // quick preview (small decode)
+      try{
+        heic2any({ blob:f, toType:'image/png', quality:0.5 }).then(b=>{
+          const url = URL.createObjectURL(b); const img = new Image(); img.onload=()=> URL.revokeObjectURL(url); img.className='thumb'; img.src=url; card.replaceChild(img, pre);
+        }).catch(()=>{});
+      }catch(_){/* ignore */}
+    }
+
+    function addFiles(list){
+      for (const f of list){
+        if (!f.type && !/\.heic$/i.test(f.name)) continue; // non-HEIC unknowns
+        files.push(f); addCard(f);
+      }
+      updateCount();
+    }
+
+    // --- CSV mapping
+    csvInput.addEventListener('change', async (e)=>{
+      csvMap.clear();
+      const file = e.target.files?.[0]; if(!file) return;
+      const text = await file.text();
+      const rows = text.split(/\r?\n/).filter(Boolean).map(r=> r.split(',').map(s=> s.trim()));
+      if(!rows.length) return;
+      const header = rows[0].map(h=> h.toLowerCase());
+      const iOrig = header.indexOf('original');
+      const iNew  = header.indexOf('new');
+      const iName = header.indexOf('name');
+      const iSku  = header.indexOf('sku');
+      for(let i=1;i<rows.length;i++){
+        const r = rows[i];
+        if(iOrig>-1 && iNew>-1){ csvMap.set(r[iOrig], r[iNew]); }
+        else if(iName>-1 && iSku>-1){ csvMap.set(r[iName], r[iSku]); }
+      }
+      statusEl.textContent = `CSV loaded: ${csvMap.size} mapping(s).`;
+    });
+
+    // --- DnD + picker
+    drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.classList.add('drag'); });
+    drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
+    drop.addEventListener('drop', (e)=>{ e.preventDefault(); drop.classList.remove('drag'); if(e.dataTransfer?.files) addFiles(e.dataTransfer.files); });
+    picker.addEventListener('change', (e)=> addFiles(e.target.files));
+    drop.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ picker.click(); }});
+
+    // --- UI events
+    qualityRange.addEventListener('input', ()=> qLabel.textContent = qualityRange.value + '%');
+    clearBtn.addEventListener('click', ()=>{ files = []; grid.innerHTML=''; updateCount(); bar.style.width='0%'; statusEl.textContent='Idle.'; clearErrors(); });
+
+    // --- Keyboard shortcuts
+    document.addEventListener('keydown', (e)=>{
+      if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='o'){ e.preventDefault(); picker.click(); }
+      if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); convertBtn.click(); }
+      if(e.key==='Delete'){ clearBtn.click(); }
+    });
+
+    // --- Core conversion with cancellation + concurrency limiter
+    async function blobToBitmap(blob){
+      try { return await createImageBitmap(blob); } catch(err){
+        return await new Promise((res, rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=URL.createObjectURL(blob); });
+      }
+    }
+    function drawDownscaled(bitmap, maxSide){
+      const { width:w0, height:h0 } = bitmap; const scale = maxSide ? Math.min(1, maxSide/Math.max(w0,h0)) : 1;
+      const w=Math.round(w0*scale), h=Math.round(h0*scale); const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(bitmap,0,0,w,h); return c;
+    }
+
+    function chunk(arr, n){ const out=[]; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out; }
+
+    convertBtn.addEventListener('click', async ()=>{
+      if (!files.length) return alert('Add some HEIC files first.');
+      clearErrors(); abort.cancelled=false; cancelBtn.disabled=false; convertBtn.disabled=true; clearBtn.disabled=true; csvInput.disabled=true; picker.disabled=true;
+      bar.style.width='0%';
+      const outType = formatSel.value; const isLossy = outType==='image/jpeg'||outType==='image/webp'; const quality = parseInt(qualityRange.value,10)/100;
+      const zip = new JSZip(); let done=0; const total = files.length;
+      const ts = nowStamp(); const zipName = `converted_${ts.date}_${ts.time}.zip`;
+
+      statusEl.textContent = `Converting 0/${total}…`;
+
+      const batches = chunk(files, 4); // process in small parallel batches for speed
+      let index = 0;
+      for(const batch of batches){
+        if(abort.cancelled) break;
+        await Promise.all(batch.map(async (f)=>{
+          const myIndex = ++index;
+          try{
+            const intermediate = await heic2any({ blob: f, toType: outType, quality: isLossy ? quality : undefined });
+            if(abort.cancelled) return;
+            const bmp = await blobToBitmap(intermediate);
+            const canvas = drawDownscaled(bmp, parseInt(maxSize.value,10));
+            const finalBlob = await new Promise(res=> canvas.toBlob(res, outType, isLossy ? quality : undefined));
+            const base = f.name.replace(/\.[^.]+$/, '');
+            const outBase = fmtName(baseName.value, base, myIndex);
+            zip.file(`${outBase}.${extFor(outType)}`, finalBlob);
+          } catch (err){ logError(`Failed on ${f.name}: ${err?.message||err}`); }
+          done++; bar.style.width = `${Math.round((done/total)*100)}%`; statusEl.textContent = `Converting ${done}/${total}…`;
+        }));
+      }
+
+      if(!abort.cancelled){
+        statusEl.textContent = 'Creating zip…';
+        const blob = await zip.generateAsync({ type:'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = zipName; a.click();
+        statusEl.textContent = `Done. Downloaded ${zipName}`;
+      } else {
+        statusEl.textContent = 'Cancelled.';
+      }
+
+      cancelBtn.disabled=true; convertBtn.disabled=false; clearBtn.disabled=false; csvInput.disabled=false; picker.disabled=false;
+    });
+
+    cancelBtn.addEventListener('click', ()=>{ abort.cancelled=true; cancelBtn.disabled=true; });
+
+    // --- Simple PWA (offline caching) - inlined service worker
+    if('serviceWorker' in navigator){
+      const swCode = `self.addEventListener('install', e=>{ e.waitUntil(caches.open('heicconv-v1').then(c=>c.addAll(['./']))); self.skipWaiting();}); self.addEventListener('activate', e=> self.clients.claim()); self.addEventListener('fetch', e=>{ e.respondWith(caches.match(e.request).then(r=> r || fetch(e.request).then(resp=>{ const copy = resp.clone(); caches.open('heicconv-v1').then(c=>c.put(e.request, copy)).catch(()=>{}); return resp; }).catch(()=> r))); });`;
+      const blob = new Blob([swCode], {type:'text/javascript'}); const url = URL.createObjectURL(blob);
+      navigator.serviceWorker.register(url).catch(()=>{});
+    }
+  </script>
+</body>
+</html>
