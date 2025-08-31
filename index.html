@@ -38,9 +38,10 @@
     .btn { background:var(--accent); color:#fff; border:none; font-weight:700; cursor:pointer; transition: background .2s; }
     .btn.secondary { background:transparent; color: var(--text); border:1px solid var(--border); }
     .btn.warn { background:var(--warn); color:#111; }
-    .progress { height:10px; background:#cbd5e1; border:1px solid var(--border); border-radius:999px; overflow:hidden; }
+    .progress { height:10px; background:#cbd5e1; border:1px solid var(--border); border-radius:999px; overflow:hidden; position:relative; }
     [data-theme="dark"] .progress { background:#0c1420; }
     .bar { height:100%; width:0%; background:var(--accent); transition: width .2s ease; }
+    .progress.cancelling .bar { background: repeating-linear-gradient(90deg, var(--warn), var(--warn) 12px, transparent 12px, transparent 24px); }
     .toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
     .inline { width:auto; }
     .pill { display:inline-flex; align-items:center; gap:8px; background:var(--bg); border:1px solid var(--border); padding:8px 10px; border-radius:999px; font-size:13px; }
@@ -74,6 +75,14 @@
             <option value="ebay">eBay (JPG 85, 1600px)</option>
             <option value="vinted">Vinted (JPG 85, 2048px)</option>
             <option value="depop">Depop (JPG 90, 2000px)</option>
+          </select>
+        </div>
+        <div class="pill">
+          <label for="thumbMode" class="muted">Previews</label>
+          <select id="thumbMode" class="inline">
+            <option value="auto">Auto</option>
+            <option value="on">Thumbnails</option>
+            <option value="off">Names only</option>
           </select>
         </div>
       </div>
@@ -172,11 +181,14 @@
     const themeSelect = document.getElementById('themeSelect');
     const presetSel = document.getElementById('preset');
     const csvInput = document.getElementById('csv');
+    const thumbModeSel = document.getElementById('thumbMode');
 
     // --- State
     let files = [];
     let abort = { cancelled:false };
     let csvMap = new Map(); // baseName -> sku OR original->new
+    let previewQueue = [];
+    let previewRunning = 0;
 
     // --- Theme: auto/light/dark with persistence + live system sync
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -230,12 +242,8 @@
       const rm = document.createElement('button'); rm.className='x'; rm.textContent='✕'; rm.title='Remove';
       rm.addEventListener('click', ()=>{ files = files.filter(x=>x!==f); grid.removeChild(card); updateCount(); });
       card.append(pre, meta, rm); grid.appendChild(card);
-      // quick preview (small decode)
-      try{
-        heic2any({ blob:f, toType:'image/png', quality:0.5 }).then(b=>{
-          const url = URL.createObjectURL(b); const img = new Image(); img.onload=()=> URL.revokeObjectURL(url); img.className='thumb'; img.src=url; card.replaceChild(img, pre);
-        }).catch(()=>{});
-      }catch(_){/* ignore */}
+      // enqueue thumbnail if enabled
+      enqueuePreview(f, card, pre);
     }
 
     function addFiles(list){
@@ -244,6 +252,7 @@
         files.push(f); addCard(f);
       }
       updateCount();
+      kickPreviewPump();
     }
 
     // --- CSV mapping
@@ -271,11 +280,14 @@
     drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
     drop.addEventListener('drop', (e)=>{ e.preventDefault(); drop.classList.remove('drag'); if(e.dataTransfer?.files) addFiles(e.dataTransfer.files); });
     picker.addEventListener('change', (e)=> addFiles(e.target.files));
-    drop.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ picker.click(); }});
+    drop.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); picker.click(); }});
 
     // --- UI events
     qualityRange.addEventListener('input', ()=> qLabel.textContent = qualityRange.value + '%');
-    clearBtn.addEventListener('click', ()=>{ files = []; grid.innerHTML=''; updateCount(); bar.style.width='0%'; statusEl.textContent='Idle.'; clearErrors(); });
+    clearBtn.addEventListener('click', ()=>{ 
+      // instant UI reset
+      files = []; previewQueue=[]; grid.innerHTML=''; updateCount(); bar.style.width='0%'; statusEl.textContent='Idle.'; clearErrors(); abort.cancelled=false; 
+    });
 
     // --- Keyboard shortcuts
     document.addEventListener('keydown', (e)=>{
@@ -284,7 +296,55 @@
       if(e.key==='Delete'){ clearBtn.click(); }
     });
 
-    // --- Core conversion with cancellation + concurrency limiter
+    // ------- Fast, non-blocking thumbnail pipeline -------
+    function shouldMakeThumbs(){
+      const mode = thumbModeSel.value;
+      if(mode==='on') return true;
+      if(mode==='off') return false;
+      // auto: turn off for big batches (>= 40)
+      return files.length < 40;
+    }
+
+    function enqueuePreview(file, card, preEl){
+      if(!shouldMakeThumbs()) return; // skip entirely for big batches
+      previewQueue.push({file, card, preEl});
+    }
+
+    function kickPreviewPump(){
+      if(previewRunning>0) return;
+      previewRunning = 1;
+      const maxParallel = 2;
+      let active = 0;
+      const step = async ()=>{
+        if(abort.cancelled){ previewQueue=[]; active=0; previewRunning=0; return; }
+        while(active < maxParallel && previewQueue.length){
+          const job = previewQueue.shift(); active++;
+          requestIdleCallback(async ()=>{
+            try{
+              const b = await heic2any({ blob: job.file, toType:'image/png', quality:0.3 });
+              const url = URL.createObjectURL(b);
+              const img = new Image(); img.onload=()=> URL.revokeObjectURL(url); img.className='thumb'; img.src=url;
+              if(job.card.isConnected){ job.card.replaceChild(img, job.preEl); }
+            }catch(_){/* ignore preview errors */}
+            active--; if(active===0 && previewQueue.length===0){ previewRunning=0; } else { step(); }
+          }, {timeout: 200});
+        }
+      };
+      step();
+    }
+    thumbModeSel.addEventListener('change', ()=>{ // regenerate previews if turned on
+      grid.querySelectorAll('.card').forEach(c=>{
+        const pre = c.querySelector('.thumb');
+        if(pre && pre.tagName!=='IMG'){
+          const name = c.querySelector('.muted')?.textContent||'';
+          const f = files.find(x=> x.name===name);
+          if(f) enqueuePreview(f, c, pre);
+        }
+      });
+      kickPreviewPump();
+    });
+
+    // --- Core conversion with responsive cancel
     async function blobToBitmap(blob){
       try { return await createImageBitmap(blob); } catch(err){
         return await new Promise((res, rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=URL.createObjectURL(blob); });
@@ -295,56 +355,74 @@
       const w=Math.round(w0*scale), h=Math.round(h0*scale); const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(bitmap,0,0,w,h); return c;
     }
 
-    function chunk(arr, n){ const out=[]; for(let i=0;i<arr.length;i+=n) out.push(arr.slice(i,i+n)); return out; }
+    function concurrency(){
+      const cores = navigator.hardwareConcurrency || 4;
+      return Math.min(4, Math.max(2, Math.floor(cores/2)));
+    }
 
     convertBtn.addEventListener('click', async ()=>{
       if (!files.length) return alert('Add some HEIC files first.');
       clearErrors(); abort.cancelled=false; cancelBtn.disabled=false; convertBtn.disabled=true; clearBtn.disabled=true; csvInput.disabled=true; picker.disabled=true;
-      bar.style.width='0%';
+      bar.style.width='0%'; document.querySelector('.progress').classList.remove('cancelling');
       const outType = formatSel.value; const isLossy = outType==='image/jpeg'||outType==='image/webp'; const quality = parseInt(qualityRange.value,10)/100;
-      const zip = new JSZip(); let done=0; const total = files.length;
-      const ts = nowStamp(); const zipName = `converted_${ts.date}_${ts.time}.zip`;
+      const zip = new JSZip(); let done=0; const total = files.length; const {date,time}=nowStamp(); const zipName = `converted_${date}_${time}.zip`;
 
-      statusEl.textContent = `Converting 0/${total}…`;
+      statusEl.textContent = `⏳ Converting 0/${total}…`;
 
-      const batches = chunk(files, 4); // process in small parallel batches for speed
-      let index = 0;
-      for(const batch of batches){
-        if(abort.cancelled) break;
-        await Promise.all(batch.map(async (f)=>{
-          const myIndex = ++index;
-          try{
-            const intermediate = await heic2any({ blob: f, toType: outType, quality: isLossy ? quality : undefined });
-            if(abort.cancelled) return;
-            const bmp = await blobToBitmap(intermediate);
-            const canvas = drawDownscaled(bmp, parseInt(maxSize.value,10));
-            const finalBlob = await new Promise(res=> canvas.toBlob(res, outType, isLossy ? quality : undefined));
-            const base = f.name.replace(/\.[^.]+$/, '');
-            const outBase = fmtName(baseName.value, base, myIndex);
-            zip.file(`${outBase}.${extFor(outType)}`, finalBlob);
-          } catch (err){ logError(`Failed on ${f.name}: ${err?.message||err}`); }
-          done++; bar.style.width = `${Math.round((done/total)*100)}%`; statusEl.textContent = `Converting ${done}/${total}…`;
-        }));
+      let index = 0; let running = 0; let cursor = 0;
+      const k = concurrency();
+
+      // Task runner schedules next job only when a slot is free
+      const runNext = async () => {
+        if (abort.cancelled) return;
+        if (cursor >= files.length) return;
+        const f = files[cursor++]; const myIndex = ++index; running++;
+        try{
+          const intermediate = await heic2any({ blob: f, toType: outType, quality: isLossy ? quality : undefined });
+          if(abort.cancelled){ running--; return; }
+          const bmp = await blobToBitmap(intermediate);
+          const canvas = drawDownscaled(bmp, parseInt(maxSize.value,10));
+          const finalBlob = await new Promise(res=> canvas.toBlob(res, outType, isLossy ? quality : undefined));
+          const base = f.name.replace(/\.[^.]+$/, '');
+          const outBase = fmtName(baseName.value, base, myIndex);
+          zip.file(`${outBase}.${extFor(outType)}`, finalBlob);
+        } catch(err){ logError(`Failed on ${f.name}: ${err?.message||err}`); }
+        done++; bar.style.width = `${Math.round((done/total)*100)}%`; statusEl.textContent = `⏳ Converting ${done}/${total}…`;
+        running--; if(!abort.cancelled) { runNext(); }
+      };
+
+      // Prime concurrent workers
+      for(let i=0;i<Math.min(k, files.length); i++) runNext();
+
+      // wait loop until all are done or cancelled
+      while((cursor < files.length || running>0) && !abort.cancelled){
+        await new Promise(r=> setTimeout(r, 50));
       }
 
       if(!abort.cancelled){
-        statusEl.textContent = 'Creating zip…';
+        statusEl.textContent = '📦 Creating zip…';
         const blob = await zip.generateAsync({ type:'blob' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = zipName; a.click();
-        statusEl.textContent = `Done. Downloaded ${zipName}`;
+        const a = document.createElement('a');
+        a.href = url; a.download = zipName; a.target = '_self'; a.rel='noopener'; a.style.display='none';
+        document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
+        statusEl.textContent = `✅ Done. Downloaded ${zipName}`;
       } else {
-        statusEl.textContent = 'Cancelled.';
+        statusEl.textContent = '✋ Cancelled.';
       }
 
       cancelBtn.disabled=true; convertBtn.disabled=false; clearBtn.disabled=false; csvInput.disabled=false; picker.disabled=false;
     });
 
-    cancelBtn.addEventListener('click', ()=>{ abort.cancelled=true; cancelBtn.disabled=true; });
+    cancelBtn.addEventListener('click', ()=>{ 
+      abort.cancelled=true; 
+      document.querySelector('.progress').classList.add('cancelling');
+      statusEl.textContent = 'Cancelling… (stopping new tasks)';
+    });
 
     // --- Simple PWA (offline caching) - inlined service worker
     if('serviceWorker' in navigator){
-      const swCode = `self.addEventListener('install', e=>{ e.waitUntil(caches.open('heicconv-v1').then(c=>c.addAll(['./']))); self.skipWaiting();}); self.addEventListener('activate', e=> self.clients.claim()); self.addEventListener('fetch', e=>{ e.respondWith(caches.match(e.request).then(r=> r || fetch(e.request).then(resp=>{ const copy = resp.clone(); caches.open('heicconv-v1').then(c=>c.put(e.request, copy)).catch(()=>{}); return resp; }).catch(()=> r))); });`;
+      const swCode = `self.addEventListener('install', e=>{ e.waitUntil(caches.open('heicconv-v2').then(c=>c.addAll(['./']))); self.skipWaiting();}); self.addEventListener('activate', e=> self.clients.claim()); self.addEventListener('fetch', e=>{ e.respondWith(caches.match(e.request).then(r=> r || fetch(e.request).then(resp=>{ const copy = resp.clone(); caches.open('heicconv-v1').then(c=>c.put(e.request, copy)).catch(()=>{}); return resp; }).catch(()=> r))); });`;
       const blob = new Blob([swCode], {type:'text/javascript'}); const url = URL.createObjectURL(blob);
       navigator.serviceWorker.register(url).catch(()=>{});
     }
