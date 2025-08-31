@@ -18,20 +18,36 @@
     header { padding:28px 20px; text-align:center; border-bottom:1px solid var(--border); background:linear-gradient(180deg, var(--panel), var(--bg)); }
     h1 { margin:0 0 6px; font-size:26px; letter-spacing:.2px; }
     p.sub { margin:0; color:var(--muted); }
-    .wrap { max-width:1080px; margin:28px auto; padding:0 16px 40px; }
+    .wrap { max-width:1200px; margin:28px auto; padding:0 16px 40px; }
     .panel { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:20px; box-shadow: 0 8px 24px rgba(0,0,0,.08); transition: background .3s, border .3s; }
     label { display:block; font-weight:600; margin-bottom:6px; }
     select, input[type="number"], input[type="range"], input[type="text"], button { width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); transition: background .3s, color .3s, border .3s; }
     select, input[type="range"], button { cursor:pointer; }
     .muted { color: var(--muted); font-size: 13px; }
+
+    .toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+    .pill { display:inline-flex; align-items:center; gap:8px; background:var(--bg); border:1px solid var(--border); padding:8px 10px; border-radius:999px; font-size:13px; }
+    .inline { width:auto; }
+
     .row { display:grid; grid-template-columns: 1.2fr 1fr; gap:16px; }
     @media (max-width: 980px){ .row{ grid-template-columns:1fr; } }
+
     .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:10px; margin-top:14px; }
-    .card { border:1px solid var(--border); background:var(--bg); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px; position:relative; overflow:hidden; animation: fadeIn .3s ease both; }
-    .thumb { width:100%; aspect-ratio: 1/1; object-fit:cover; border-radius:8px; background:linear-gradient(90deg, rgba(0,0,0,.06), rgba(0,0,0,.02), rgba(0,0,0,.06)); background-size:200% 100%; animation: shimmer 1.2s linear infinite; display:grid; place-items:center; font-size:12px; color:var(--muted); }
+    .card { border:1px solid var(--border); background:var(--bg); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:8px; position:relative; overflow:hidden; animation: fadeIn .2s ease both; }
+    .thumb { width:100%; aspect-ratio: 1/1; border-radius:8px; background:#0b0f140d; display:grid; place-items:center; font-size:12px; color:var(--muted); }
     .x { position:absolute; top:8px; right:8px; background:transparent; border:1px solid var(--border); border-radius:8px; padding:2px 6px; cursor:pointer; backdrop-filter: blur(2px); }
+
+    .list { width:100%; border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    .list thead th { text-align:left; font-size:13px; color:var(--muted); padding:8px 10px; background:var(--bg); border-bottom:1px solid var(--border); }
+    .list tbody td { padding:10px; border-bottom:1px solid var(--border); font-size:14px; }
+    .status { font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); display:inline-block; }
+    .status.ok{ background:color-mix(in oklab, var(--ok) 14%, transparent); }
+    .status.err{ background:color-mix(in oklab, var(--error) 14%, transparent); }
+    .status.run{ background:color-mix(in oklab, var(--accent) 14%, transparent); }
+
     .drop { border:2px dashed var(--border); border-radius:16px; padding:26px; text-align:center; color:var(--muted); transition:.2s ease border-color, .2s ease background; }
     .drop.drag { border-color: var(--accent); background: rgba(127, 209, 185, .08); }
+
     .controls { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; }
     @media (max-width: 980px){ .controls{ grid-template-columns:1fr 1fr; } }
     .actions { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; align-items:center; }
@@ -43,15 +59,11 @@
     [data-theme="dark"] .progress { background:#0c1420; }
     .bar { height:100%; width:0%; background:var(--accent); transition: width .2s ease; }
     .progress.cancelling .bar { background: repeating-linear-gradient(90deg, var(--warn), var(--warn) 12px, transparent 12px, transparent 24px); }
-    .toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
-    .inline { width:auto; }
-    .pill { display:inline-flex; align-items:center; gap:8px; background:var(--bg); border:1px solid var(--border); padding:8px 10px; border-radius:999px; font-size:13px; }
-    .errorlog { margin-top:12px; padding:12px; border-radius:12px; border:1px solid var(--border); background:color-mix(in oklab, var(--error) 12%, transparent); }
-    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; border:1px solid var(--border); border-bottom-width:2px; padding:2px 6px; border-radius:6px; }
+
+    .errorlog { margin-top:12px; padding:12px; border-radius:12px; border:1px solid var(--border); background:color-mix(in oklab, var(--error) 12%, transparent); display:none; }
     footer { text-align:center; color:var(--muted); padding:30px 10px; }
     .note { font-size:13px; color:var(--muted); margin-top:8px; }
 
-    @keyframes shimmer { 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
     @keyframes fadeIn { from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
   </style>
 </head>
@@ -64,38 +76,48 @@
   <main class="wrap">
     <div class="panel">
       <div class="toolbar">
-        <div class="pill">
-          <label for="themeSelect" class="muted">Theme</label>
-          <select id="themeSelect" class="inline">
-            <option value="auto">Auto</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <div class="pill">
+            <label for="themeSelect" class="muted">Theme</label>
+            <select id="themeSelect" class="inline">
+              <option value="auto">Auto</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+          <div class="pill">
+            <label for="preset" class="muted">Preset</label>
+            <select id="preset" class="inline">
+              <option value="custom">Custom</option>
+              <option value="ebay">eBay (JPG 85, 1600px)</option>
+              <option value="vinted">Vinted (JPG 85, 2048px)</option>
+              <option value="depop">Depop (JPG 90, 2000px)</option>
+            </select>
+          </div>
+          <div class="pill">
+            <label for="viewMode" class="muted">View</label>
+            <select id="viewMode" class="inline">
+              <option value="list">List</option>
+              <option value="gallery">Gallery</option>
+            </select>
+          </div>
+          <div class="pill" id="thumbPill" style="display:none;">
+            <label for="thumbMode" class="muted">Thumbnails</label>
+            <select id="thumbMode" class="inline">
+              <option value="auto">Auto</option>
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+          <div class="pill">
+            <label for="speedMode" class="muted">Speed</label>
+            <select id="speedMode" class="inline">
+              <option value="off">Normal</option>
+              <option value="on">Speed Mode</option>
+            </select>
+          </div>
         </div>
-        <div class="pill">
-          <label for="preset" class="muted">Preset</label>
-          <select id="preset" class="inline">
-            <option value="custom">Custom</option>
-            <option value="ebay">eBay (JPG 85, 1600px)</option>
-            <option value="vinted">Vinted (JPG 85, 2048px)</option>
-            <option value="depop">Depop (JPG 90, 2000px)</option>
-          </select>
-        </div>
-        <div class="pill">
-          <label for="thumbMode" class="muted">Previews</label>
-          <select id="thumbMode" class="inline">
-            <option value="auto">Auto</option>
-            <option value="on">Thumbnails</option>
-            <option value="off">Names only</option>
-          </select>
-        </div>
-        <div class="pill">
-          <label for="speedMode" class="muted">Speed Mode</label>
-          <select id="speedMode" class="inline">
-            <option value="off">Off</option>
-            <option value="on">On</option>
-          </select>
-        </div>
+        <div class="pill muted" id="summary">0 files</div>
       </div>
 
       <div id="drop" class="drop" tabindex="0" aria-label="Drop zone. Press Enter to open file picker.">
@@ -152,14 +174,16 @@
             <span class="kbd">Del</span> clear
           </div>
 
-          <div id="errors" class="errorlog" style="display:none;" role="status" aria-live="polite"></div>
+          <div id="errors" class="errorlog" role="status" aria-live="polite"></div>
         </section>
 
         <section>
           <label for="csv">Optional CSV (map names/SKUs)</label>
           <input id="csv" type="file" accept=".csv" />
           <div class="note">CSV headers supported: <strong>original,new</strong> or <strong>name,sku</strong>. We’ll use {sku} in your filename pattern.</div>
-          <div id="grid" class="grid" aria-live="polite" aria-busy="false"></div>
+
+          <!-- Repository container (List or Gallery) -->
+          <div id="repoList" style="margin-top:10px; display:block;"></div>
         </section>
       </div>
     </div>
@@ -173,10 +197,10 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
   <script>
-    // --- Elements
+    // ---------- Elements & State ----------
     const drop = document.getElementById('drop');
     const picker = document.getElementById('picker');
-    const grid = document.getElementById('grid');
+    const repoList = document.getElementById('repoList');
     const convertBtn = document.getElementById('convert');
     const cancelBtn = document.getElementById('cancel');
     const clearBtn = document.getElementById('clear');
@@ -192,19 +216,18 @@
     const themeSelect = document.getElementById('themeSelect');
     const presetSel = document.getElementById('preset');
     const csvInput = document.getElementById('csv');
+    const viewModeSel = document.getElementById('viewMode');
+    const thumbPill = document.getElementById('thumbPill');
     const thumbModeSel = document.getElementById('thumbMode');
     const speedModeSel = document.getElementById('speedMode');
+    const summary = document.getElementById('summary');
 
-    // --- State
-    let files = [];
+    let files = [];             // File[] (originals)
+    let items = [];             // {id, file, name, size, status, imgURL?}
     let abort = { cancelled:false };
-    let csvMap = new Map(); // baseName -> sku OR original->new
-    let previewQueue = [];
-    let previewRunning = 0;
-    let addQueue = [];
-    let addPumpRunning = false;
+    let csvMap = new Map();
 
-    // --- Theme: auto/light/dark with persistence + live system sync
+    // ---------- Theme ----------
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     function resolveTheme(mode){ return mode === 'auto' ? (media.matches ? 'dark' : 'light') : mode; }
     function applyThemeMode(mode){ document.body.setAttribute('data-theme', resolveTheme(mode)); themeSelect.value = mode; localStorage.setItem('themeMode', mode); }
@@ -213,7 +236,7 @@
     themeSelect.addEventListener('change', e=> applyThemeMode(e.target.value));
     media.addEventListener('change', ()=>{ if ((localStorage.getItem('themeMode')||'auto')==='auto') applyThemeMode('auto'); });
 
-    // --- Presets
+    // ---------- Presets ----------
     const presets = {
       custom: null,
       ebay:  { format:'image/jpeg', quality:85, max:1600, pattern:'{base}-{index}' },
@@ -222,346 +245,209 @@
     };
     presetSel.addEventListener('change', ()=>{
       const p = presets[presetSel.value];
-      if(!p) return; // custom
-      formatSel.value = p.format;
-      qualityRange.value = p.quality; qLabel.textContent = p.quality+"%";
-      maxSize.value = p.max;
-      if(!baseName.value) baseName.value = p.pattern;
+      if(!p) return;
+      formatSel.value = p.format; qualityRange.value = p.quality; qLabel.textContent = p.quality+"%"; maxSize.value = p.max; if(!baseName.value) baseName.value = p.pattern;
       persistSettings();
     });
 
-    // --- Settings persistence
+    // ---------- Settings persistence ----------
     function persistSettings(){
-      const data = {
-        preset: presetSel.value,
-        format: formatSel.value,
-        quality: qualityRange.value,
-        maxSize: maxSize.value,
-        pattern: baseName.value,
-        thumbMode: thumbModeSel.value,
-        speedMode: speedModeSel.value
-      };
+      const data = { preset:presetSel.value, format:formatSel.value, quality:qualityRange.value, maxSize:maxSize.value, pattern:baseName.value, view:viewModeSel.value, thumbs:thumbModeSel.value, speed:speedModeSel.value };
       localStorage.setItem('settings', JSON.stringify(data));
     }
     function restoreSettings(){
       try{ const s = JSON.parse(localStorage.getItem('settings')||'{}');
-        if(s.preset) presetSel.value = s.preset;
-        if(s.format) formatSel.value = s.format;
-        if(s.quality){ qualityRange.value = s.quality; qLabel.textContent = s.quality + '%'; }
-        if(s.maxSize) maxSize.value = s.maxSize;
-        if(s.pattern) baseName.value = s.pattern;
-        if(s.thumbMode) thumbModeSel.value = s.thumbMode;
-        if(s.speedMode) speedModeSel.value = s.speedMode;
+        if(s.preset) presetSel.value = s.preset; if(s.format) formatSel.value = s.format; if(s.quality){ qualityRange.value=s.quality; qLabel.textContent=s.quality+'%'; }
+        if(s.maxSize) maxSize.value = s.maxSize; if(s.pattern) baseName.value = s.pattern; if(s.view) viewModeSel.value = s.view; if(s.thumbs) thumbModeSel.value = s.thumbs; if(s.speed) speedModeSel.value = s.speed;
       }catch(_){}
     }
     restoreSettings();
-    [formatSel, qualityRange, maxSize, baseName, thumbModeSel, speedModeSel].forEach(el=> el.addEventListener('change', persistSettings));
-    qualityRange.addEventListener('input', persistSettings);
 
-    // When Speed Mode is ON, apply fast defaults
-    function maybeApplySpeedMode(){
-      if(speedModeSel.value==='on'){
-        thumbModeSel.value='off';
-        formatSel.value='image/jpeg';
-        qualityRange.value=85; qLabel.textContent='85%';
-        maxSize.value=1600;
-      }
-    }
+    [formatSel, qualityRange, maxSize, baseName, viewModeSel, thumbModeSel, speedModeSel].forEach(el=> el.addEventListener('change', persistSettings));
+    qualityRange.addEventListener('input', ()=>{ qLabel.textContent = qualityRange.value + '%'; persistSettings(); });
+
+    function maybeApplySpeedMode(){ if(speedModeSel.value==='on'){ thumbModeSel.value='off'; formatSel.value='image/jpeg'; qualityRange.value=85; qLabel.textContent='85%'; maxSize.value=1600; } }
     speedModeSel.addEventListener('change', ()=>{ maybeApplySpeedMode(); persistSettings(); });
     maybeApplySpeedMode();
 
-    // --- Helpers
+    // ---------- Utilities ----------
     const pad = (num, size=3)=> String(num).padStart(size,'0');
+    const kb = n => (n/1024).toFixed(0) + ' KB';
     function extFor(mime){ return mime==='image/png' ? 'png' : (mime==='image/webp'? 'webp':'jpg'); }
     function nowStamp(){ const d=new Date(); const yyyy=d.getFullYear(); const mm=pad(d.getMonth()+1,2); const dd=pad(d.getDate(),2); const HH=pad(d.getHours(),2); const MM=pad(d.getMinutes(),2); return {date:`${yyyy}${mm}${dd}`, time:`${HH}${MM}`}; }
-    function fmtName(tpl, base, index){
-      const {date,time}=nowStamp();
-      const sku = csvMap.get(base) || csvMap.get(base.toLowerCase()) || '';
-      return (tpl||'{base}-{index}')
-        .replaceAll('{base}', base)
-        .replaceAll('{index}', pad(index))
-        .replaceAll('{date}', date)
-        .replaceAll('{time}', time)
-        .replaceAll('{sku}', sku);
+    function fmtName(tpl, base, index){ const {date,time}=nowStamp(); const sku = csvMap.get(base) || csvMap.get(base.toLowerCase()) || ''; return (tpl||'{base}-{index}').replaceAll('{base}', base).replaceAll('{index}', pad(index)).replaceAll('{date}', date).replaceAll('{time}', time).replaceAll('{sku}', sku); }
+    function updateSummary(){ summary.textContent = `${items.length} files`;
+      countEl.textContent = items.length ? `${items.length} file${items.length>1?'s':''} queued` : ''; }
+
+    function resetUI(){ items=[]; files=[]; repoList.innerHTML=''; updateSummary(); bar.style.width='0%'; statusEl.textContent='Idle.'; errorsEl.style.display='none'; errorsEl.textContent=''; }
+
+    // ---------- Repository (List/Gallery) ----------
+    function renderRepo(){
+      const view = viewModeSel.value;
+      thumbPill.style.display = view==='gallery' ? 'inline-flex' : 'none';
+      if(view==='list') renderList(); else renderGallery();
     }
 
-    function logError(msg){ errorsEl.style.display='block'; errorsEl.textContent = msg; }
-    function clearErrors(){ errorsEl.style.display='none'; errorsEl.textContent=''; }
-
-    function updateCount(){ countEl.textContent = files.length ? `${files.length} file${files.length>1?'s':''} queued` : ''; }
-
-    function createCard(f){
-      const card = document.createElement('div'); card.className='card';
-      const pre = document.createElement('div'); pre.className='thumb'; pre.textContent='HEIC';
-      const meta = document.createElement('div'); meta.className='muted'; meta.textContent = f.name;
-      const rm = document.createElement('button'); rm.className='x'; rm.textContent='✕'; rm.title='Remove';
-      rm.addEventListener('click', ()=>{ files = files.filter(x=>x!==f); grid.removeChild(card); updateCount(); });
-      card.append(pre, meta, rm);
-      return {card, pre};
+    function renderList(){
+      const rows = items.map((it, i)=> `<tr data-id="${it.id}"><td>${pad(i+1,2)}</td><td>${it.name}</td><td class="muted">${kb(it.size)}</td><td><span class="status ${it.statusClass}">${it.statusText}</span></td><td><button class="btn secondary" data-act="remove" data-id="${it.id}" style="width:auto;">Remove</button></td></tr>`).join('');
+      repoList.innerHTML = `<table class="list"><thead><tr><th>#</th><th>Name</th><th>Size</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      repoList.querySelectorAll('[data-act="remove"]').forEach(btn=> btn.addEventListener('click', ()=> removeItem(btn.getAttribute('data-id'))));
     }
+
+    function renderGallery(){
+      const grid = document.createElement('div'); grid.className='grid';
+      for(const it of items){
+        const card = document.createElement('div'); card.className='card'; card.setAttribute('data-id', it.id);
+        const pict = document.createElement('div'); pict.className='thumb'; pict.textContent='File';
+        const name = document.createElement('div'); name.className='muted'; name.textContent = it.name;
+        const rm = document.createElement('button'); rm.className='x'; rm.textContent='✕'; rm.title='Remove'; rm.addEventListener('click', ()=> removeItem(it.id));
+        card.append(pict, name, rm); grid.appendChild(card);
+      }
+      repoList.innerHTML=''; repoList.appendChild(grid);
+      // kick lazy previews only if user wants them
+      if(thumbModeSel.value!=='off') scheduleThumbs();
+    }
+
+    function removeItem(id){ items = items.filter(x=> x.id!==id); files = files.filter(f=> f._id!==id); renderRepo(); updateSummary(); }
 
     function addFiles(list){
-      for (const f of list){
-        if (!f.type && !/\.heic$/i.test(f.name)) continue; // non-HEIC unknowns
-        files.push(f); addQueue.push(f);
-      }
-      updateCount();
-      pumpAddQueue();
+      const startLen = items.length;
+      for(const f of list){ if(!f.type && !/\.heic$/i.test(f.name)) continue; const id = crypto.randomUUID(); f._id=id; files.push(f); items.push({id, file:f, name:f.name, size:f.size, statusText:'Queued', statusClass:''}); }
+      updateSummary();
+      if(items.length!==startLen) renderRepo();
     }
 
-    function pumpAddQueue(){
-      if(addPumpRunning) return; addPumpRunning = true;
-      function frame(){
-        let budget = 24; // add max 24 cards per frame
-        while(budget-- > 0 && addQueue.length){
-          const f = addQueue.shift();
-          const {card, pre} = createCard(f); grid.appendChild(card);
-          enqueuePreview(f, card, pre);
-        }
-        if(addQueue.length){ requestAnimationFrame(frame); }
-        else { addPumpRunning = false; kickPreviewPump(); }
-      }
-      requestAnimationFrame(frame);
-    }
+    // ---------- Thumbnails (on demand, very light) ----------
+    let thumbQueue = [];
+    let thumbBusy = false;
+    function scheduleThumbs(){ if(viewModeSel.value!=='gallery') return; if(thumbModeSel.value==='auto' && items.length>=40) return; if(thumbModeSel.value==='off') return; thumbQueue = items.slice(0); runThumbPump(); }
 
-    // --- CSV mapping
-    csvInput.addEventListener('change', async (e)=>{
-      csvMap.clear();
-      const file = e.target.files?.[0]; if(!file) return;
-      const text = await file.text();
-      const rows = text.split(/\r?\n/).filter(Boolean).map(r=> r.split(',').map(s=> s.trim()));
-      if(!rows.length) return;
-      const header = rows[0].map(h=> h.toLowerCase());
-      const iOrig = header.indexOf('original');
-      const iNew  = header.indexOf('new');
-      const iName = header.indexOf('name');
-      const iSku  = header.indexOf('sku');
-      for(let i=1;i<rows.length;i++){
-        const r = rows[i];
-        if(iOrig>-1 && iNew>-1){ csvMap.set(r[iOrig], r[iNew]); }
-        else if(iName>-1 && iSku>-1){ csvMap.set(r[iName], r[iSku]); }
-      }
-      statusEl.textContent = `CSV loaded: ${csvMap.size} mapping(s).`;
-    });
+    function runThumbPump(){ if(thumbBusy) return; thumbBusy=true; const step=()=>{ const task = thumbQueue.shift(); if(!task){ thumbBusy=false; return; } // generate tiny preview 256px on worker
+        genThumb(task).then(url=>{ const card = repoList.querySelector(`[data-id="${task.id}"] .thumb`); if(card) { card.style.backgroundImage = `url(${url})`; card.style.backgroundSize='cover'; card.textContent=''; } }).catch(()=>{}).finally(()=> requestIdleCallback(step, {timeout:200})); }; requestIdleCallback(step, {timeout:200}); }
 
-    // --- DnD + picker
+    // Separate worker for tiny previews (kept to 1 at a time via pump)
+    const thumbWorkerBlob = new Blob([`
+      importScripts('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
+      self.onmessage = async (e)=>{ const {id, file} = e.data; try{ const inter = await heic2any({ blob:file, toType:'image/png' }); const bmp = await createImageBitmap(inter); const m=Math.max(bmp.width,bmp.height); const s=Math.min(1, 256/m); const w=Math.max(1,Math.round(bmp.width*s)); const h=Math.max(1,Math.round(bmp.height*s)); const c=new OffscreenCanvas(w,h); const ctx=c.getContext('2d'); ctx.drawImage(bmp,0,0,w,h); const out = await c.convertToBlob({type:'image/png'}); const r = await out.arrayBuffer(); self.postMessage({id, ok:true, buf:r}, [r]); } catch(err){ self.postMessage({id, ok:false}); } };`], {type:'text/javascript'});
+    const thumbWorkerURL = URL.createObjectURL(thumbWorkerBlob);
+    const thumbWorker = new Worker(thumbWorkerURL);
+    const thumbResolvers = new Map();
+    thumbWorker.onmessage = (e)=>{ const {id, ok, buf} = e.data; const res = thumbResolvers.get(id); if(!res) return; thumbResolvers.delete(id); if(ok){ const blob = new Blob([buf], {type:'image/png'}); const url = URL.createObjectURL(blob); res.resolve(url); } else { res.reject(); } };
+    function genThumb(item){ return new Promise((resolve,reject)=>{ thumbResolvers.set(item.id,{resolve,reject}); try{ thumbWorker.postMessage({id:item.id, file:item.file}); }catch(e){ thumbResolvers.delete(item.id); reject(e); } }); }
+
+    // ---------- CSV mapping ----------
+    csvInput.addEventListener('change', async (e)=>{ csvMap.clear(); const file=e.target.files?.[0]; if(!file) return; const text=await file.text(); const rows=text.split(/\r?\n/).filter(Boolean).map(r=> r.split(',').map(s=> s.trim())); if(!rows.length) return; const header=rows[0].map(h=> h.toLowerCase()); const iOrig=header.indexOf('original'); const iNew=header.indexOf('new'); const iName=header.indexOf('name'); const iSku=header.indexOf('sku'); for(let i=1;i<rows.length;i++){ const r=rows[i]; if(iOrig>-1&&iNew>-1) csvMap.set(r[iOrig], r[iNew]); else if(iName>-1&&iSku>-1) csvMap.set(r[iName], r[iSku]); } statusEl.textContent = `CSV loaded: ${csvMap.size} mapping(s).`; });
+
+    // ---------- DnD + picker ----------
     drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.classList.add('drag'); });
     drop.addEventListener('dragleave', ()=> drop.classList.remove('drag'));
     drop.addEventListener('drop', (e)=>{ e.preventDefault(); drop.classList.remove('drag'); if(e.dataTransfer?.files) addFiles(e.dataTransfer.files); });
     picker.addEventListener('change', (e)=> addFiles(e.target.files));
     drop.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); picker.click(); }});
 
-    // --- UI events
-    qualityRange.addEventListener('input', ()=> { qLabel.textContent = qualityRange.value + '%'; persistSettings(); });
-    clearBtn.addEventListener('click', ()=>{ 
-      // instant UI reset
-      files = []; previewQueue=[]; addQueue=[]; grid.innerHTML=''; updateCount(); bar.style.width='0%'; statusEl.textContent='Idle.'; clearErrors(); abort.cancelled=false; 
-    });
+    // ---------- Keyboard shortcuts ----------
+    document.addEventListener('keydown', (e)=>{ if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='o'){ e.preventDefault(); picker.click(); } if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); convertBtn.click(); } if(e.key==='Delete'){ clearBtn.click(); } });
 
-    // --- Keyboard shortcuts
-    document.addEventListener('keydown', (e)=>{
-      if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='o'){ e.preventDefault(); picker.click(); }
-      if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); convertBtn.click(); }
-      if(e.key==='Delete'){ clearBtn.click(); }
-    });
+    // ---------- List/Gallery switching ----------
+    viewModeSel.addEventListener('change', ()=>{ renderRepo(); persistSettings(); });
+    thumbModeSel.addEventListener('change', ()=>{ renderRepo(); persistSettings(); });
 
-    // ------- Fast, non-blocking thumbnail pipeline -------
-    function shouldMakeThumbs(){
-      const mode = thumbModeSel.value;
-      if(mode==='on') return true;
-      if(mode==='off') return false;
-      // auto: turn off for big batches (>= 40)
-      return files.length < 40;
-    }
+    // ---------- Conversion (worker pool, optimized path) ----------
+    function chooseIntermediateType(toType, willResize){ return willResize ? 'image/png' : toType; } // avoid double-lossy
 
-    function enqueuePreview(file, card, preEl){
-      if(!shouldMakeThumbs()) return; // skip entirely for big batches
-      previewQueue.push({file, card, preEl});
-    }
-
-    function kickPreviewPump(){
-      if(previewRunning>0) return;
-      previewRunning = 1;
-      const maxParallel = 2;
-      let active = 0;
-      const step = async ()=>{
-        if(abort.cancelled){ previewQueue=[]; active=0; previewRunning=0; return; }
-        while(active < maxParallel && previewQueue.length){
-          const job = previewQueue.shift(); active++;
-          requestIdleCallback(async ()=>{
-            try{
-              const b = await heic2any({ blob: job.file, toType:'image/png', quality:0.3 });
-              const url = URL.createObjectURL(b);
-              const img = new Image(); img.onload=()=> URL.revokeObjectURL(url); img.className='thumb'; img.src=url;
-              if(job.card.isConnected){ job.card.replaceChild(img, job.preEl); }
-            }catch(_){/* ignore preview errors */}
-            active--; if(active===0 && previewQueue.length===0){ previewRunning=0; } else { step(); }
-          }, {timeout: 200});
-        }
-      };
-      step();
-    }
-    thumbModeSel.addEventListener('change', ()=>{ // regenerate previews if turned on
-      grid.querySelectorAll('.card').forEach(c=>{
-        const pre = c.querySelector('.thumb');
-        if(pre && pre.tagName!=='IMG'){
-          const name = c.querySelector('.muted')?.textContent||'';
-          const f = files.find(x=> x.name===name);
-          if(f) enqueuePreview(f, c, pre);
-        }
-      });
-      kickPreviewPump(); persistSettings();
-    });
-
-    // ------------- Worker Pool for fast conversion (off main thread when possible) -------------
-    const workerBlob = new Blob([`
+    const convWorkerBlob = new Blob([`
       importScripts('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
-      self.onmessage = async (e) => {
+      self.onmessage = async (e)=>{
         const { id, file, toType, quality, maxSize } = e.data;
-        try {
-          const inter = await heic2any({ blob: file, toType, quality });
-          let out = inter;
-          if (typeof OffscreenCanvas !== 'undefined' && maxSize) {
-            const bmp = await createImageBitmap(inter);
-            const maxSide = Math.max(bmp.width, bmp.height);
-            const scale = Math.min(1, maxSize / maxSide);
-            const w = Math.round(bmp.width * scale);
-            const h = Math.round(bmp.height * scale);
-            const canvas = new OffscreenCanvas(w, h);
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(bmp, 0, 0, w, h);
-            out = await canvas.convertToBlob({ type: toType, quality });
-          }
-          self.postMessage({ id, ok: true, blob: out });
-        } catch (err) {
-          self.postMessage({ id, ok: false, error: err?.message || String(err) });
-        }
+        try{
+          const willResize = !!maxSize;
+          const interType = willResize ? 'image/png' : toType;
+          const inter = await heic2any({ blob:file, toType: interType, quality });
+          if(!willResize){ self.postMessage({ id, ok:true, buf: await inter.arrayBuffer() }, [await inter.arrayBuffer()]); return; }
+          const bmp = await createImageBitmap(inter);
+          const m = Math.max(bmp.width, bmp.height);
+          const s = Math.min(1, maxSize / m);
+          const w = Math.max(1, Math.round(bmp.width * s));
+          const h = Math.max(1, Math.round(bmp.height * s));
+          const c = new OffscreenCanvas(w, h);
+          const ctx = c.getContext('2d');
+          ctx.drawImage(bmp, 0, 0, w, h);
+          const out = await c.convertToBlob({ type: toType, quality });
+          const buf = await out.arrayBuffer();
+          self.postMessage({ id, ok:true, buf }, [buf]);
+        }catch(err){ self.postMessage({ id, ok:false, error: err?.message || String(err) }); }
       };
     `], {type:'text/javascript'});
-    const workerURL = URL.createObjectURL(workerBlob);
-
-    class WorkerPool {
-      constructor(size){ this.size=size; this.workers=[]; this.free=[]; this.counter=0; this.alive=true; }
-      init(){ for(let i=0;i<this.size;i++){ const w=new Worker(workerURL); this.workers.push(w); this.free.push(w);} }
-      runTask(data){
-        if(!this.alive) return Promise.reject(new Error('pool terminated'));
-        const id = ++this.counter;
-        return new Promise((resolve, reject)=>{
-          const acquire = ()=>{
-            if(!this.alive) return reject(new Error('pool terminated'));
-            if(this.free.length){
-              const w = this.free.pop();
-              w.onmessage = (e)=>{
-                const msg = e.data; if(msg.id!==id) return;
-                w.onmessage=null; this.free.push(w);
-                if(msg.ok) resolve(msg.blob); else reject(new Error(msg.error));
-              };
-              try { w.postMessage({ ...data, id }); } catch(err){ this.free.push(w); reject(err); }
-            } else { setTimeout(acquire, 10); }
-          };
-          acquire();
-        });
-      }
-      terminate(){ this.alive=false; this.workers.forEach(w=>{ try{w.terminate();}catch{}}); this.workers=[]; this.free=[]; }
+    const convWorkerURL = URL.createObjectURL(convWorkerBlob);
+    class Pool{ constructor(n){ this.n=n; this.ws=[]; this.free=[]; this.seq=0; this.map=new Map(); }
+      init(){ for(let i=0;i<this.n;i++){ const w=new Worker(convWorkerURL); w.onmessage=(e)=>{ const {id, ok, buf, error}=e.data; const r=this.map.get(id); if(!r) return; this.map.delete(id); this.free.push(w); if(ok){ const blob=new Blob([buf]); r.resolve(blob); } else r.reject(new Error(error)); }; this.ws.push(w); this.free.push(w);} }
+      run(data){ const id=++this.seq; return new Promise((resolve,reject)=>{ const go=()=>{ if(!poolLive) return reject(new Error('cancelled')); if(this.free.length){ const w=this.free.pop(); this.map.set(id,{resolve,reject}); try{ w.postMessage({ ...data, id }); }catch(e){ this.free.push(w); this.map.delete(id); reject(e);} } else { setTimeout(go, 10); } }; go(); }); }
+      kill(){ this.ws.forEach(w=>{ try{w.terminate();}catch{} }); this.ws=[]; this.free=[]; this.map.clear(); }
     }
 
-    function concurrency(){
-      const cores = navigator.hardwareConcurrency || 4;
-      // Fewer but faster workers keeps memory lower
-      return Math.min(4, Math.max(2, Math.floor(cores/2)));
-    }
+    let poolLive = true; let pool = null;
+    function startPool(){ poolLive=true; const cores = navigator.hardwareConcurrency || 4; const n=Math.min(4, Math.max(2, Math.floor(cores/2))); pool=new Pool(n); pool.init(); return pool; }
+    function stopPool(){ poolLive=false; if(pool){ pool.kill(); pool=null; } }
 
-    async function convertInWorker(pool, f, toType, quality, max){
-      try{
-        return await pool.runTask({ file: f, toType, quality, maxSize: max });
-      } catch (e) {
-        // Fallback to main thread if worker failed (Safari/older browsers)
-        const inter = await heic2any({ blob:f, toType, quality });
-        const bmp = await blobToBitmap(inter);
-        const canvas = drawDownscaled(bmp, max);
-        return await new Promise(res=> canvas.toBlob(res, toType, quality));
-      }
-    }
-
-    // --- Core conversion with responsive cancel & worker pool
-    async function blobToBitmap(blob){
-      try { return await createImageBitmap(blob); } catch(err){
-        return await new Promise((res, rej)=>{ const img=new Image(); img.onload=()=>res(img); img.onerror=rej; img.src=URL.createObjectURL(blob); });
-      }
-    }
-    function drawDownscaled(bitmap, maxSide){
-      const { width:w0, height:h0 } = bitmap; const scale = maxSide ? Math.min(1, maxSide/Math.max(w0,h0)) : 1;
-      const w=Math.round(w0*scale), h=Math.round(h0*scale); const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(bitmap,0,0,w,h); return c;
-    }
+    function ext(to){ return to==='image/png'?'png':(to==='image/webp'?'webp':'jpg'); }
 
     convertBtn.addEventListener('click', async ()=>{
-      if (!files.length) return alert('Add some HEIC files first.');
-      clearErrors(); abort.cancelled=false; cancelBtn.disabled=false; convertBtn.disabled=true; clearBtn.disabled=true; csvInput.disabled=true; picker.disabled=true;
+      if (!items.length) return alert('Add some HEIC files first.');
+      errorsEl.style.display='none'; errorsEl.textContent='';
+      abort.cancelled=false; cancelBtn.disabled=false; convertBtn.disabled=true; clearBtn.disabled=true; csvInput.disabled=true; picker.disabled=true;
       bar.style.width='0%'; document.querySelector('.progress').classList.remove('cancelling');
 
+      // pause thumb generation during heavy work
+      thumbQueue=[]; thumbBusy=false;
+
+      // apply speed mode quick defaults
       maybeApplySpeedMode();
 
-      const outType = formatSel.value; const isLossy = outType==='image/jpeg'||outType==='image/webp'; const quality = parseInt(qualityRange.value,10)/100; const max=parseInt(maxSize.value,10);
-      const zip = new JSZip(); let done=0; const total = files.length; const start = performance.now(); const {date,time}=nowStamp(); const zipName = `converted_${date}_${time}.zip`;
+      const toType = formatSel.value; const isLossy = toType==='image/jpeg'||toType==='image/webp'; const quality = isLossy ? parseInt(qualityRange.value,10)/100 : undefined; const max=parseInt(maxSize.value,10)||0;
+      const willResize = !!max;
+      const zip = new JSZip(); let done=0; const total = items.length; const {date,time}=nowStamp(); const start=performance.now(); const zipName = `converted_${date}_${time}.zip`;
 
-      statusEl.textContent = `⏳ Converting 0/${total}…`;
+      // mark statuses
+      items.forEach(it=>{ it.statusText='Queued'; it.statusClass=''; }); renderRepo();
 
-      const pool = new WorkerPool(concurrency()); pool.init();
-      let index = 0; let running = 0; let cursor = 0; let eta='—';
+      const p = startPool();
+      let index=0; let cursor=0; let running=0; const k=p.ws.length;
 
-      const updateStatus = ()=>{
-        const elapsed = (performance.now()-start)/1000; const per = done? (elapsed/done) : 0; const remain = Math.max(0, total-done); eta = done? Math.ceil(per*remain) : '—';
-        statusEl.textContent = `⏳ Converting ${done}/${total}… ETA ${typeof eta==='number'? eta+'s':'—'}`;
-      };
+      function updateRow(id, text, cls){ const it = items.find(x=>x.id===id); if(it){ it.statusText=text; it.statusClass=cls||it.statusClass; if(viewModeSel.value==='list'){ const row = repoList.querySelector(`tr[data-id="${id}"] .status`); if(row){ row.textContent=text; row.className = 'status '+(cls||''); } } } }
 
-      const k = concurrency();
-      const runNext = async () => {
-        if (abort.cancelled) return;
-        if (cursor >= files.length) return;
-        const f = files[cursor++]; const myIndex = ++index; running++;
+      const updateStatus = ()=>{ const elapsed=(performance.now()-start)/1000; const per=done? (elapsed/done):0; const remain=Math.max(0,total-done); const eta=done? Math.ceil(per*remain)+'s':'—'; statusEl.textContent = `⏳ Converting ${done}/${total}… ETA ${eta}`; };
+
+      const next = async ()=>{
+        if(abort.cancelled) return; if(cursor>=items.length) return;
+        const it = items[cursor++]; running++; updateRow(it.id,'Converting','run');
         try{
-          const finalBlob = await convertInWorker(pool, f, outType, isLossy?quality:undefined, max);
-          const base = f.name.replace(/\.[^.]+$/, '');
-          const outBase = fmtName(baseName.value, base, myIndex);
-          zip.file(`${outBase}.${extFor(outType)}`, finalBlob);
-        } catch(err){ logError(`Failed on ${f.name}: ${err?.message||err}`); }
-        done++; bar.style.width = `${Math.round((done/total)*100)}%`; updateStatus();
-        running--; if(!abort.cancelled) { runNext(); }
+          const blob = await p.run({ file: it.file, toType, quality, maxSize: willResize? max : 0 });
+          const base = it.name.replace(/\.[^.]+$/, ''); const out = fmtName(baseName.value, base, ++index);
+          zip.file(`${out}.${ext(toType)}`, blob); updateRow(it.id,'Done','ok');
+        }catch(err){ errorsEl.style.display='block'; errorsEl.textContent = `Failed on ${it.name}: ${err?.message||err}`; updateRow(it.id,'Error','err'); }
+        done++; bar.style.width = `${Math.round((done/total)*100)}%`; updateStatus(); running--; if(!abort.cancelled) next();
       };
 
-      for(let i=0;i<Math.min(k, files.length); i++) runNext();
+      for(let i=0;i<Math.min(k, items.length); i++) next();
+      while((cursor<items.length || running>0) && !abort.cancelled){ await new Promise(r=> setTimeout(r, 50)); }
 
-      while((cursor < files.length || running>0) && !abort.cancelled){ await new Promise(r=> setTimeout(r, 50)); }
+      stopPool();
 
-      pool.terminate();
-
-      if(!abort.cancelled){
-        statusEl.textContent = '📦 Creating zip…';
-        const blob = await zip.generateAsync({ type:'blob' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = zipName; a.target = '_self'; a.rel='noopener'; a.style.display='none';
-        document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
-        statusEl.textContent = `✅ Done. Downloaded ${zipName}`;
-      } else {
-        statusEl.textContent = '✋ Cancelled.';
-      }
+      if(!abort.cancelled){ statusEl.textContent='📦 Creating zip…'; const blob=await zip.generateAsync({type:'blob'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=zipName; a.target='_self'; a.rel='noopener'; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000); statusEl.textContent=`✅ Done. Downloaded ${zipName}`; }
+      else { statusEl.textContent='✋ Cancelled.'; }
 
       cancelBtn.disabled=true; convertBtn.disabled=false; clearBtn.disabled=false; csvInput.disabled=false; picker.disabled=false;
     });
 
-    cancelBtn.addEventListener('click', ()=>{ 
-      abort.cancelled=true; 
-      document.querySelector('.progress').classList.add('cancelling');
-      statusEl.textContent = 'Cancelling… (stopping new tasks)';
-    });
+    cancelBtn.addEventListener('click', ()=>{ abort.cancelled=true; document.querySelector('.progress').classList.add('cancelling'); statusEl.textContent = 'Cancelling…'; stopPool(); });
 
-    // --- Simple PWA (offline caching) - refined service worker
-    if('serviceWorker' in navigator){
-      const swCode = `const CACHE='heicconv-v3';self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./'])));self.skipWaiting();});self.addEventListener('activate',e=>self.clients.claim());self.addEventListener('fetch',e=>{const r=e.request;const u=new URL(r.url);if(r.method!=='GET'||u.origin!==location.origin){return;}e.respondWith(caches.match(r).then(m=>m||fetch(r).then(resp=>{const copy=resp.clone();caches.open(CACHE).then(c=>c.put(r,copy)).catch(()=>{});return resp;}).catch(()=>m)));});`;
-      const blob = new Blob([swCode], {type:'text/javascript'}); const url = URL.createObjectURL(blob);
-      navigator.serviceWorker.register(url).catch(()=>{});
-    }
+    clearBtn.addEventListener('click', ()=>{ stopPool(); resetUI(); });
+
+    // ---------- Init ----------
+    resetUI(); renderRepo();
+
+    // ---------- Service Worker (safer cache) ----------
+    if('serviceWorker' in navigator){ const swCode = `const CACHE='heicconv-v4';self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./'])));self.skipWaiting();});self.addEventListener('activate',e=>self.clients.claim());self.addEventListener('fetch',e=>{const r=e.request;const u=new URL(r.url);if(r.method!=='GET'||u.origin!==location.origin){return;}e.respondWith(caches.match(r).then(m=>m||fetch(r).then(resp=>{const copy=resp.clone();caches.open(CACHE).then(c=>c.put(r,copy)).catch(()=>{});return resp;}).catch(()=>m)));});`; const blob=new Blob([swCode],{type:'text/javascript'}); const url=URL.createObjectURL(blob); navigator.serviceWorker.register(url).catch(()=>{}); }
   </script>
 </body>
 </html>
