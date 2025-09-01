@@ -38,6 +38,7 @@
     .status.ok{background:color-mix(in oklab,var(--ok) 14%,transparent)}
     .status.err{background:color-mix(in oklab,var(--error) 14%,transparent)}
     .status.run{background:color-mix(in oklab,var(--accent) 14%,transparent)}
+    .status.skip{background:color-mix(in oklab,var(--warn) 18%,transparent)}
 
     .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center}
     .btn{background:var(--accent);color:#fff;border:none;font-weight:700;cursor:pointer;transition:transform .04s ease,background .2s}
@@ -53,7 +54,26 @@
     .errorlog{margin-top:12px;padding:12px;border-radius:12px;border:1px solid var(--border);background:color-mix(in oklab,var(--error) 12%,transparent);display:none}
     footer{text-align:center;color:var(--muted);padding:30px 10px}
     .note{font-size:13px;color:var(--muted);margin-top:8px}
+
+    .tooltip{position:relative;display:inline-block}
+    .tooltip .tip{position:absolute;z-index:20;inset:auto auto auto 100%;transform:translateX(8px);min-width:260px;background:var(--panel);border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.12);padding:10px;border-radius:10px;color:var(--text);font-size:13px;display:none}
+    .tooltip.show .tip{display:block}
+
+    /* Toast */
+    .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel);color:var(--text);border:1px solid var(--border);padding:10px 14px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .15s ease}
+    .toast.show{opacity:1}
   </style>
+  <script>
+    // Surface silent failures
+    window.addEventListener('error', (e)=>{
+      const el = document.getElementById('errors'); if(!el) return;
+      el.style.display='block'; el.textContent = 'Script error: ' + (e.message||e.error||'unknown');
+    });
+    window.addEventListener('unhandledrejection', (e)=>{
+      const el = document.getElementById('errors'); if(!el) return;
+      el.style.display='block'; el.textContent = 'Unhandled error: ' + (e.reason?.message||e.reason||'unknown');
+    });
+  </script>
 </head>
 <body data-theme="light">
   <header>
@@ -89,6 +109,15 @@
               <option value="on">Speed Mode</option>
             </select>
           </div>
+          <div class="pill tooltip" id="compatPill">
+            <label for="compatMode" class="muted">Compatibility</label>
+            <select id="compatMode" class="inline">
+              <option value="auto">Auto</option>
+              <option value="on">On</option>
+            </select>
+            <button id="whyCompat" class="btn secondary inline" style="width:auto;padding:6px 8px">Why?</button>
+            <div class="tip" id="whyTip"></div>
+          </div>
           <div class="pill muted" id="diag">—</div>
         </div>
         <div class="pill muted" id="summary">0 files</div>
@@ -103,7 +132,7 @@
 
       <div class="row">
         <section>
-          <div class="controls" style="margin:14px 0 8px">
+          <div class="controls" style="margin:14px 0 8px; display:grid; grid-template-columns: repeat(4, 1fr); gap:12px;">
             <div>
               <label for="format">Output format</label>
               <select id="format">
@@ -127,6 +156,11 @@
               <input id="basename" placeholder="e.g., {sku}-{index} or ebay_{date}_{index}" />
               <div class="note">Tokens: {base} original name, {index} 001…, {date} YYYYMMDD, {time} HHmm, {sku} from CSV.</div>
             </div>
+            <div>
+              <label for="splitMB">Split ZIP every (MB)</label>
+              <input id="splitMB" type="number" min="0" step="10" value="0" />
+              <div class="note">0 = off (single ZIP). Parts download as "…_part01.zip", "…_part02.zip".</div>
+            </div>
           </div>
 
           <div class="actions">
@@ -139,6 +173,7 @@
           <div style="margin:14px 0">
             <div class="progress" aria-hidden="true"><div class="bar" id="bar"></div></div>
             <div id="status" class="muted" style="margin-top:6px">Idle.</div>
+            <div id="parts" class="muted" style="margin-top:6px"></div>
           </div>
 
           <div class="pill" style="margin-top:6px;gap:6px">
@@ -165,10 +200,11 @@
     <footer>Built for quick marketplace prep. Works offline after first load.</footer>
   </main>
 
-  <!-- Keep JSZip as fallback -->
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <!-- Try zip.js for streaming zips (optional, improves memory). If it fails to load, we fallback to JSZip. -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- ZIP libs: prefer zip.js (streaming), fallback to JSZip -->
   <script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.34/dist/zip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
   <script>
@@ -185,19 +221,32 @@
     const qLabel = document.getElementById('qLabel');
     const maxSize = document.getElementById('maxSize');
     const baseName = document.getElementById('basename');
+    const splitMB = document.getElementById('splitMB');
     const bar = document.getElementById('bar');
     const statusEl = document.getElementById('status');
+    const partsEl = document.getElementById('parts');
     const errorsEl = document.getElementById('errors');
     const themeSelect = document.getElementById('themeSelect');
     const presetSel = document.getElementById('preset');
     const csvInput = document.getElementById('csv');
     const speedModeSel = document.getElementById('speedMode');
+    const compatModeSel = document.getElementById('compatMode');
+    const whyBtn = document.getElementById('whyCompat');
+    const whyTip = document.getElementById('whyTip');
+    const compatPill = document.getElementById('compatPill');
     const summary = document.getElementById('summary');
     const diag = document.getElementById('diag');
+    const toast = document.getElementById('toast');
 
-    let items = [];             // {id, file, name, size, statusText, statusClass}
+    let items = [];             // {id, file, name, size, statusText, statusClass, seq?}
     let abort = { cancelled:false };
     let csvMap = new Map();
+
+    // Failure report
+    const failureReport = []; // {index,name,size,reason,attempts}
+
+    // Current run context (for hard cancel)
+    let runCtx = null; // {pool, zipper, usingCompat, targetActive, capacity, pending, bySeq, nextToZip, running, cursor, cancelVisHandler}
 
     // ---------- Theme ----------
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -209,32 +258,14 @@
     media.addEventListener('change', ()=>{ if ((localStorage.getItem('themeMode')||'auto')==='auto') applyThemeMode('auto'); });
 
     // ---------- Presets ----------
-    const presets = {
-      custom: null,
-      ebay:  { format:'image/jpeg', quality:85, max:1600, pattern:'{base}-{index}' },
-      vinted:{ format:'image/jpeg', quality:85, max:2048, pattern:'vinted_{date}_{index}' },
-      depop: { format:'image/jpeg', quality:90, max:2000, pattern:'depop_{date}_{index}' }
-    };
-    presetSel.addEventListener('change', ()=>{
-      const p = presets[presetSel.value];
-      if(!p) return;
-      formatSel.value = p.format; qualityRange.value = p.quality; qLabel.textContent = p.quality+"%"; maxSize.value = p.max; if(!baseName.value) baseName.value = p.pattern;
-      persistSettings();
-    });
+    const presets = { custom: null, ebay:{format:'image/jpeg',quality:85,max:1600,pattern:'{base}-{index}'}, vinted:{format:'image/jpeg',quality:85,max:2048,pattern:'vinted_{date}_{index}'}, depop:{format:'image/jpeg',quality:90,max:2000,pattern:'depop_{date}_{index}'} };
+    presetSel.addEventListener('change', ()=>{ const p = presets[presetSel.value]; if(!p) return; formatSel.value=p.format; qualityRange.value=p.quality; qLabel.textContent=p.quality+"%"; maxSize.value=p.max; if(!baseName.value) baseName.value=p.pattern; persistSettings(); });
 
     // ---------- Settings persistence ----------
-    function persistSettings(){
-      const data = { preset:presetSel.value, format:formatSel.value, quality:qualityRange.value, maxSize:maxSize.value, pattern:baseName.value, speed:speedModeSel.value };
-      localStorage.setItem('settings', JSON.stringify(data));
-    }
-    function restoreSettings(){
-      try{ const s = JSON.parse(localStorage.getItem('settings')||'{}');
-        if(s.preset) presetSel.value = s.preset; if(s.format) formatSel.value = s.format; if(s.quality){ qualityRange.value=s.quality; qLabel.textContent=s.quality+'%'; }
-        if(s.maxSize) maxSize.value = s.maxSize; if(s.pattern) baseName.value = s.pattern; if(s.speed) speedModeSel.value = s.speed;
-      }catch(_){}
-    }
+    function persistSettings(){ const data={ preset:presetSel.value, format:formatSel.value, quality:qualityRange.value, maxSize:maxSize.value, pattern:baseName.value, speed:speedModeSel.value, compat:compatModeSel.value, splitMB:splitMB.value }; localStorage.setItem('settings', JSON.stringify(data)); }
+    function restoreSettings(){ try{ const s=JSON.parse(localStorage.getItem('settings')||'{}'); if(s.preset) presetSel.value=s.preset; if(s.format) formatSel.value=s.format; if(s.quality){ qualityRange.value=s.quality; qLabel.textContent=s.quality+'%'; } if(s.maxSize) maxSize.value=s.maxSize; if(s.pattern) baseName.value=s.pattern; if(s.speed) speedModeSel.value=s.speed; if(s.compat) compatModeSel.value=s.compat; if(s.splitMB) splitMB.value=s.splitMB; }catch(_){} }
     restoreSettings();
-    [formatSel, qualityRange, maxSize, baseName, speedModeSel].forEach(el=> el.addEventListener('change', persistSettings));
+    [formatSel, qualityRange, maxSize, baseName, speedModeSel, compatModeSel, splitMB].forEach(el=> el.addEventListener('change', persistSettings));
     qualityRange.addEventListener('input', ()=>{ qLabel.textContent = qualityRange.value + '%'; persistSettings(); });
 
     function maybeApplySpeedMode(){ if(speedModeSel.value==='on'){ formatSel.value='image/jpeg'; qualityRange.value=85; qLabel.textContent='85%'; maxSize.value=1600; } }
@@ -247,30 +278,21 @@
     const MB = n => (n/1024/1024).toFixed(2) + ' MB';
     function extFor(mime){ return mime==='image/png' ? 'png' : (mime==='image/webp'? 'webp':'jpg'); }
     function nowStamp(){ const d=new Date(); const yyyy=d.getFullYear(); const mm=pad(d.getMonth()+1,2); const dd=pad(d.getDate(),2); const HH=pad(d.getHours(),2); const MM=pad(d.getMinutes(),2); return {date:`${yyyy}${mm}${dd}`, time:`${HH}${MM}`}; }
-    function fmtName(tpl, base, index){ const {date,time}=nowStamp(); const sku = csvMap.get(base) || csvMap.get(base.toLowerCase()) || ''; return (tpl||'{base}-{index}').replaceAll('{base}', base).replaceAll('{index}', pad(index)).replaceAll('{date}', date).replaceAll('{time}', time).replaceAll('{sku}', sku); }
+    function fmtNameRun(tpl, base, index, stamp){ const sku = csvMap.get(base) || csvMap.get(base.toLowerCase()) || ''; return (tpl||'{base}-{index}').replaceAll('{base}', base).replaceAll('{index}', pad(index)).replaceAll('{date}', stamp.date).replaceAll('{time}', stamp.time).replaceAll('{sku}', sku); }
+    const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
+    const withTimeout = (p, ms)=> new Promise((resolve, reject)=>{ const t=setTimeout(()=> reject(new Error('timeout')), ms); p.then(v=>{clearTimeout(t); resolve(v);}).catch(e=>{clearTimeout(t); reject(e);}); });
+    const nextFrame = ()=> new Promise(requestAnimationFrame);
 
-    function resetUI(){ items=[]; repoList.innerHTML=''; updateSummary(); bar.style.width='0%'; statusEl.textContent='Idle.'; errorsEl.style.display='none'; errorsEl.textContent=''; }
-    function updateSummary(){
-      const totalSize = items.reduce((a,b)=>a+b.size,0);
-      summary.textContent = `${items.length} file${items.length!==1?'s':''} • ${MB(totalSize)}`;
-      countEl.textContent = items.length ? `${items.length} file${items.length>1?'s':''} queued` : '';
-      const cores = navigator.hardwareConcurrency || 4;
-      diag.textContent = `Cores: ${cores} • Mode: ${speedModeSel.value==='on'?'Speed':'Normal'} • Zip: ${window.zip? 'zip.js':'JSZip'}`;
-    }
+    function showToast(msg){ toast.textContent = msg; toast.classList.add('show'); setTimeout(()=> toast.classList.remove('show'), 1800); }
+
+    function resetUI(){ updateSummary(); bar.style.width='0%'; statusEl.textContent='Idle.'; partsEl.textContent=''; errorsEl.style.display='none'; errorsEl.textContent=''; cancelBtn.disabled=true; convertBtn.disabled=false; clearBtn.disabled=false; csvInput.disabled=false; picker.disabled=false; document.querySelector('.progress').classList.remove('cancelling'); }
+    function updateSummary(){ const totalSize = items.reduce((a,b)=>a+b.size,0); summary.textContent = `${items.length} file${items.length!==1?'s':''} • ${MB(totalSize)}`; countEl.textContent = items.length ? `${items.length} file${items.length>1?'s':''} queued` : ''; const cores = navigator.hardwareConcurrency || 4; diag.textContent = `Cores: ${cores} • Mode: ${speedModeSel.value==='on'?'Speed':'Normal'}`; }
 
     // ---------- Repo rendering (list only; no images) ----------
-    function renderList(){
-      const rows = items.map((it, i)=> `<tr data-id="${it.id}"><td>${pad(i+1,2)}</td><td>${it.name}</td><td class="muted">${kb(it.size)}</td><td><span class="status ${it.statusClass}">${it.statusText}</span></td><td><button class="btn secondary" data-act="remove" data-id="${it.id}" style="width:auto">Remove</button></td></tr>`).join('');
-      repoList.innerHTML = `<table class="list"><thead><tr><th>#</th><th>Name</th><th>Size</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
-      repoList.querySelectorAll('[data-act="remove"]').forEach(btn=> btn.addEventListener('click', ()=> removeItem(btn.getAttribute('data-id'))));
-    }
-
+    function renderList(){ const rows = items.map((it, i)=> `<tr data-id="${it.id}"><td>${pad(i+1,2)}</td><td>${it.name}</td><td class="muted">${kb(it.size)}</td><td><span class="status ${it.statusClass}">${it.statusText}</span></td><td><button class="btn secondary" data-act="remove" data-id="${it.id}" style="width:auto">Remove</button></td></tr>`).join(''); repoList.innerHTML = `<table class="list"><thead><tr><th>#</th><th>Name</th><th>Size</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`; repoList.querySelectorAll('[data-act="remove"]').forEach(btn=> btn.addEventListener('click', ()=> removeItem(btn.getAttribute('data-id')))); }
     function removeItem(id){ items = items.filter(x=> x.id!==id); updateSummary(); renderList(); }
 
-    function addFiles(list){
-      for(const f of list){ if(!f.type && !/\.heic$/i.test(f.name)) continue; const id = crypto.randomUUID(); items.push({id, file:f, name:f.name, size:f.size, statusText:'Queued', statusClass:''}); }
-      updateSummary(); renderList();
-    }
+    function addFiles(list){ const uuid = (self.crypto && crypto.randomUUID) ? crypto.randomUUID.bind(crypto) : ()=> 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2); let added=0; for(const f of list){ const nameOk = /\.heic$/i.test(f.name||''); const typeOk = (f.type||'').toLowerCase().includes('heic'); if(!(nameOk||typeOk)) continue; const id = uuid(); items.push({id, file:f, name:f.name||('file-'+id+'.heic'), size:f.size||0, statusText:'Queued', statusClass:''}); added++; } if(!added){ errorsEl.style.display='block'; errorsEl.textContent='No HEIC/HEIF files detected. Try selecting from disk instead of dragging from Photos.'; } updateSummary(); renderList(); statusEl.textContent = `Ready: ${items.length} file(s) queued.`; }
 
     // ---------- CSV mapping ----------
     csvInput.addEventListener('change', async (e)=>{ csvMap.clear(); const file=e.target.files?.[0]; if(!file) return; const text=await file.text(); const rows=text.split(/\r?\n/).filter(Boolean).map(r=> r.split(',').map(s=> s.trim())); if(!rows.length) return; const header=rows[0].map(h=> h.toLowerCase()); const iOrig=header.indexOf('original'); const iNew=header.indexOf('new'); const iName=header.indexOf('name'); const iSku=header.indexOf('sku'); for(let i=1;i<rows.length;i++){ const r=rows[i]; if(iOrig>-1&&iNew>-1) csvMap.set(r[iOrig], r[iNew]); else if(iName>-1&&iSku>-1) csvMap.set(r[iName], r[iSku]); } statusEl.textContent = `CSV loaded: ${csvMap.size} mapping(s).`; });
@@ -282,8 +304,23 @@
     picker.addEventListener('change', (e)=> addFiles(e.target.files));
     drop.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); picker.click(); }});
 
-    // ---------- Keyboard shortcuts ----------
-    document.addEventListener('keydown', (e)=>{ if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='o'){ e.preventDefault(); picker.click(); } if((e.ctrlKey||e.metaKey) && e.key==="Enter"){ e.preventDefault(); convertBtn.click(); } if(e.key==='Delete'){ clearBtn.click(); } });
+    // ---------- Env/Compat detection ----------
+    function detectCompat(){
+      const reasons = [];
+      const coi = !!self.crossOriginIsolated; // requires COOP/COEP headers to be true
+      if(typeof OffscreenCanvas === 'undefined') reasons.push('OffscreenCanvas unsupported');
+      if(typeof createImageBitmap === 'undefined') reasons.push('createImageBitmap unsupported');
+      if(!coi) reasons.push('Not cross-origin isolated (no COOP/COEP)');
+      return { needsCompat: reasons.length>0, reasons, coi };
+    }
+    function renderCompatTooltip(info){
+      const lines = info.reasons.length? info.reasons.map(r=>`• ${r}`).join('<br/>') : 'All advanced features detected.';
+      whyTip.innerHTML = `<strong>Why Compat Mode?</strong><br/>Compat avoids workers/offscreen canvases and resizes on the main thread for maximum reliability on older Safari/iOS and strict browsers.<br/><br/>Environment check:<br/>${lines}`;
+      compatPill.title = info.reasons.join(' | ');
+    }
+    const compatInfo = detectCompat();
+    renderCompatTooltip(compatInfo);
+    document.getElementById('whyCompat').addEventListener('click', ()=>{ compatPill.classList.toggle('show'); });
 
     // ---------- Conversion workers (pool) ----------
     const convWorkerBlob = new Blob([`
@@ -294,14 +331,9 @@
           const willResize = !!maxSize;
           const interType = willResize ? 'image/png' : toType;
           const inter = await heic2any({ blob:file, toType: interType, quality });
-          if(!willResize){ const buf = await inter.arrayBuffer(); self.postMessage({ id, ok:true, buf }, [buf]); return; }
-          let bmp;
-          try{
-            // Try hardware-accelerated decode at target size
-            const tmp = await createImageBitmap(inter, { resizeWidth: undefined, resizeHeight: undefined, resizeQuality:'high' });
-            bmp = tmp;
-          }catch{ bmp = await createImageBitmap(inter); }
-
+          const canOffscreen = typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap !== 'undefined';
+          if(!willResize || !canOffscreen){ const buf = await inter.arrayBuffer(); self.postMessage({ id, ok:true, buf, final: !willResize, interType }, [buf]); return; }
+          const bmp = await createImageBitmap(inter);
           const m = Math.max(bmp.width, bmp.height);
           const s = Math.min(1, maxSize / m);
           const w = Math.max(1, Math.round(bmp.width * s));
@@ -311,107 +343,191 @@
           ctx.drawImage(bmp, 0, 0, w, h);
           const out = await c.convertToBlob({ type: toType, quality });
           const buf = await out.arrayBuffer();
-          self.postMessage({ id, ok:true, buf }, [buf]);
+          self.postMessage({ id, ok:true, buf, final:true, interType: toType }, [buf]);
         }catch(err){ self.postMessage({ id, ok:false, error: err?.message || String(err) }); }
       };
     `], {type:'text/javascript'});
     const convWorkerURL = URL.createObjectURL(convWorkerBlob);
 
     class Pool{ constructor(n){ this.n=n; this.ws=[]; this.free=[]; this.seq=0; this.map=new Map(); this.live=true; }
-      init(){ for(let i=0;i<this.n;i++){ const w=new Worker(convWorkerURL); w.onmessage=(e)=>{ const {id, ok, buf, error}=e.data; const r=this.map.get(id); if(!r) return; this.map.delete(id); this.free.push(w); if(ok){ const blob=new Blob([buf]); r.resolve(blob); } else r.reject(new Error(error)); }; this.ws.push(w); this.free.push(w);} }
+      init(){ for(let i=0;i<this.n;i++){ const w=new Worker(convWorkerURL); w.onmessage=(e)=>{ const {id, ok, buf, error, final, interType}=e.data; const r=this.map.get(id); if(!r) return; this.map.delete(id); this.free.push(w); if(ok){ const blob=new Blob([buf]); r.resolve({blob, final, interType}); } else r.reject(new Error(error)); }; this.ws.push(w); this.free.push(w);} }
       run(data, timeoutMs=30000){ if(!this.live) return Promise.reject(new Error('pool terminated')); const id=++this.seq; return new Promise((resolve,reject)=>{ let to; const start=()=>{ if(!this.live) return reject(new Error('pool terminated')); if(this.free.length){ const w=this.free.pop(); this.map.set(id,{resolve:(v)=>{ clearTimeout(to); resolve(v); },reject:(e)=>{ clearTimeout(to); reject(e); }}); try{ w.postMessage({ ...data, id }); to=setTimeout(()=>{ this.map.delete(id); this.free.push(w); reject(new Error('timeout')); }, timeoutMs); }catch(e){ this.free.push(w); this.map.delete(id); reject(e);} } else { setTimeout(start, 10); } }; start(); }); }
       kill(){ this.live=false; this.ws.forEach(w=>{ try{w.terminate();}catch{} }); this.ws=[]; this.free=[]; this.map.clear(); }
     }
 
-    function concurrency(){ const cores = navigator.hardwareConcurrency || 4; let n = Math.min(4, Math.max(2, Math.floor(cores/2))); if(speedModeSel.value==='on') n = Math.min(n+1, 4); return n; }
+    function startCapacity(){ const cores = navigator.hardwareConcurrency || 4; return Math.min(8, Math.max(2, cores)); }
 
-    // ---------- Zip engine (streaming with zip.js, fallback to JSZip) ----------
-    function createZipEngine(){
-      if(window.zip && zip?.ZipWriter){
-        // zip.js streaming writer
-        let writer; let ready=false;
-        return {
-          name:'zip.js',
-          async init(){ writer = new zip.ZipWriter(new zip.BlobWriter('application/zip')); ready=true; },
-          async add(path, blob){ if(!ready) await this.init(); await writer.add(path, new zip.BlobReader(blob), { level:0 }); },
-          async finalize(){ return await writer.close(); }
-        };
-      } else {
-        // JSZip fallback (memory heavy for huge zips)
-        const z = new JSZip();
-        return {
-          name:'JSZip',
-          async init(){},
-          async add(path, blob){ z.file(path, blob); },
-          async finalize(){ return await z.generateAsync({ type:'blob' }); }
-        };
+    // ---------- Chunked ZIP engine ----------
+    class CountingBlobWriter { constructor(type){ this.type=type; this.inner = new zip.BlobWriter(type); this.size=0; } writeUint8Array(arr){ this.size += arr.length; return this.inner.writeUint8Array(arr); } getData(){ return this.inner.getData(); } }
+    class ChunkedZipper {
+      constructor(baseStem, partMB){ this.baseStem=baseStem; this.limit = (partMB && partMB>0) ? partMB*1024*1024 : Infinity; this.part=0; this.engine=null; this.writer=null; this.zipWriter=null; this.jszip=null; this.size=0; this.hadEntries=false; this.aborted=false; }
+      async ensureReady(){ if(this.part===0) await this._newPart(); }
+      async _newPart(){ if(this.aborted) return; this.part++; this.size=0; this.hadEntries=false; if(window.zip && zip?.ZipWriter){ this.engine='zip.js'; this.writer = new CountingBlobWriter('application/zip'); this.zipWriter = new zip.ZipWriter(this.writer); this.jszip=null; } else { this.engine='JSZip'; this.jszip = new JSZip(); this.zipWriter=null; this.writer=null; } }
+      async add(path, blob){ if(this.aborted) return; await this.ensureReady(); this.hadEntries=true; if(this.zipWriter){ await this.zipWriter.add(path, new zip.BlobReader(blob), { level:0 }); this.size = this.writer.size; } else { this.jszip.file(path, blob, { compression:'STORE' }); this.size += blob.size; } if(this.size >= this.limit){ await this._finalizePart(); await this._newPart(); } }
+      async _finalizePart(cancelled=false){ if(!this.hadEntries) return; let blob; if(this.zipWriter){ try{ blob = await this.zipWriter.close(); }catch(e){ /* ignore on abort */ } } else { try{ blob = await this.jszip.generateAsync({ type:'blob', compression:'STORE' }); }catch(e){} }
+        if(blob){ const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`${this.baseStem}_part${String(this.part).padStart(2,'0')}${cancelled?'_cancelled':''}.zip`; a.target='_self'; a.rel='noopener'; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000); partsEl.textContent += (partsEl.textContent? ' · ' : '') + `Part ${this.part}${cancelled?' (cancelled)':''}`; }
+      }
+      async finalizeAll(){ if(this.aborted) return; if(this.hadEntries){ await this._finalizePart(false); } }
+      async cancel(){ this.aborted=true; try{ await this._finalizePart(true); }catch(_){} finally{ try{ if(this.zipWriter){ await this.zipWriter.close(); } }catch(_){ } this.zipWriter=null; this.jszip=null; this.writer=null; }
       }
     }
 
-    // ---------- Conversion pipeline ----------
     function ext(to){ return to==='image/png'?'png':(to==='image/webp'?'webp':'jpg'); }
 
+    // ---------- Adaptive & Compat helpers from previous build ----------
+    function detectCompat(){
+      const reasons = [];
+      const coi = !!self.crossOriginIsolated;
+      if(typeof OffscreenCanvas === 'undefined') reasons.push('OffscreenCanvas unsupported');
+      if(typeof createImageBitmap === 'undefined') reasons.push('createImageBitmap unsupported');
+      if(!coi) reasons.push('Not cross-origin isolated (no COOP/COEP)');
+      return { needsCompat: reasons.length>0, reasons, coi };
+    }
+
+    function progressiveResize(bmp, toW, toH, mime, q){
+      return new Promise(async (resolve)=>{
+        let srcCanvas = document.createElement('canvas');
+        srcCanvas.width = bmp.width; srcCanvas.height = bmp.height;
+        let sctx = srcCanvas.getContext('2d'); sctx.drawImage(bmp,0,0);
+        while(srcCanvas.width > toW*1.5 || srcCanvas.height > toH*1.5){
+          const nw = Math.max(toW, Math.floor(srcCanvas.width/2));
+          const nh = Math.max(toH, Math.floor(srcCanvas.height/2));
+          const tmp = document.createElement('canvas'); tmp.width=nw; tmp.height=nh;
+          tmp.getContext('2d').drawImage(srcCanvas, 0,0, nw, nh);
+          srcCanvas = tmp; sctx = srcCanvas.getContext('2d');
+          await new Promise(requestAnimationFrame);
+        }
+        if(srcCanvas.width !== toW || srcCanvas.height !== toH){ const final = document.createElement('canvas'); final.width=toW; final.height=toH; final.getContext('2d').drawImage(srcCanvas,0,0,toW,toH); srcCanvas = final; }
+        srcCanvas.toBlob(resolve, mime, q);
+      });
+    }
+
+    // ---------- Convert flow ----------
     convertBtn.addEventListener('click', async ()=>{
       if (!items.length) return alert('Add some HEIC files first.');
-      errorsEl.style.display='none'; errorsEl.textContent='';
-      abort.cancelled=false; cancelBtn.disabled=false; convertBtn.disabled=true; clearBtn.disabled=true; csvInput.disabled=true; picker.disabled=true;
+      errorsEl.style.display='none'; errorsEl.textContent=''; partsEl.textContent='';
+      abort.cancelled=false; failureReport.length = 0; cancelBtn.disabled=false; convertBtn.disabled=true; clearBtn.disabled=true; csvInput.disabled=true; picker.disabled=true;
       bar.style.width='0%'; document.querySelector('.progress').classList.remove('cancelling');
 
-      maybeApplySpeedMode();
-
       const toType = formatSel.value; const isLossy = toType==='image/jpeg'||toType==='image/webp'; const quality = isLossy ? parseInt(qualityRange.value,10)/100 : undefined; const max=parseInt(maxSize.value,10)||0; const willResize=!!max;
-      let done=0; const total=items.length; const {date,time}=nowStamp(); const start=performance.now(); const zipName=`converted_${date}_${time}.zip`;
+      const TIMEOUT_MS = 30000; const MAX_ATTEMPTS = 3;
 
-      // statuses reset
+      const stamp = nowStamp();
+      let zipped=0; const total=items.length; const baseStem=`converted_${stamp.date}_${stamp.time}`;
+
       items.forEach(it=>{ it.statusText='Queued'; it.statusClass=''; }); renderList();
 
-      // Pool + zip engine
-      const pool = new Pool(concurrency()); pool.init(); let maxActive = pool.n; // adaptive
-      const zipEng = createZipEngine(); await zipEng.init(); diag.textContent = `Cores: ${navigator.hardwareConcurrency||4} • Mode: ${speedModeSel.value==='on'?'Speed':'Normal'} • Zip: ${zipEng.name}`;
+      // Path selection
+      const env = detectCompat();
+      let usingCompat = (compatModeSel.value==='on') || (compatModeSel.value==='auto' && env.needsCompat);
+      const capacity = startCapacity();
+      let pool=null; let targetActive = usingCompat ? 1 : Math.max(1, Math.min(capacity, Math.floor((navigator.hardwareConcurrency||4)/2)));
+      let hiddenSavedActive = targetActive; // used by visibility throttle
+      const zipper = new ChunkedZipper(baseStem, parseInt(splitMB.value,10)||0);
+      try{ if(!usingCompat){ pool = new Pool(capacity); pool.init(); } await zipper.ensureReady(); }catch(e){ usingCompat=true; }
 
-      let index=0; let cursor=0; let running=0; let lastUpdate=0; let slowCount=0;
+      const cores = navigator.hardwareConcurrency || 4;
+      let lastDiag=0; const updateDiag = (force=false)=>{ const now=performance.now(); if(!force && now-lastDiag<250) return; lastDiag=now; diag.textContent = `Cores: ${cores} • Mode: ${speedModeSel.value==='on'?'Speed':'Normal'} • Zip: ${zipper.engine||'—'} • Split: ${splitMB.value>0? splitMB.value+'MB':'off'} • Path: ${usingCompat?'Compat':'Workers'} • Conc: ${usingCompat? '1/1/—' : `${Math.min(running,targetActive)}/${targetActive}/${capacity}`}`; };
+      updateDiag(true);
+      if(usingCompat && env.reasons.length){ errorsEl.style.display='block'; errorsEl.innerHTML = `Running in <strong>Compatibility</strong> mode for reliability.<br/>Reason(s): ${env.reasons.join(', ')}`; }
 
-      function updateRow(id, text, cls){ const row = repoList.querySelector(`tr[data-id="${id}"] .status`); const it = items.find(x=>x.id===id); if(it){ it.statusText=text; it.statusClass=cls||it.statusClass; if(row){ row.textContent=text; row.className='status '+(cls||''); } } }
-      function updateStatus(){ const now=performance.now(); if(now-lastUpdate<200) return; lastUpdate=now; const elapsed=(now-start)/1000; const per=done? (elapsed/done):0; const remain=Math.max(0,total-done); const eta=done? Math.ceil(per*remain)+'s':'—'; statusEl.textContent=`⏳ Converting ${done}/${total}… ETA ${eta}`; }
+      // Visibility throttle
+      const onVis = ()=>{ if(document.hidden){ hiddenSavedActive = targetActive; targetActive = usingCompat ? 1 : Math.min(2, capacity); } else { targetActive = Math.max(1, hiddenSavedActive); } updateDiag(true); };
+      document.addEventListener('visibilitychange', onVis, { passive:true });
+
+      // Scheduler state
+      let assignSeq=0; let nextToZip=1; const bySeq = []; const pending = {}; let running=0; let cursor=0; let lastStatus=0;
+      function updateStatus(){ const now=performance.now(); if(now-lastStatus<150) return; lastStatus=now; statusEl.textContent=`⏳ Processed ${zipped}/${total}…`; }
+
+      // EMA for adapt
+      let emaMs = null; function updateEMA(dt){ if(dt<=0 || !isFinite(dt)) return; emaMs = (emaMs==null)? dt : (0.2*dt + 0.8*(emaMs)); if(!usingCompat && !document.hidden){ if(emaMs < 2000 && targetActive < capacity){ targetActive++; updateDiag(); } if(emaMs > 10000 && targetActive > 1){ targetActive = Math.max(1, targetActive-1); updateDiag(); } } }
+
+      async function tryFlush(){ while(!abort.cancelled && pending[nextToZip]){ const entry = pending[nextToZip]; const it = bySeq[nextToZip]; const base = it.name.replace(/\.[^.]+$/, ''); const out = fmtNameRun(baseName.value, base, nextToZip, stamp); if(!entry.skip){ await zipper.add(`${out}.${ext(toType)}`, entry.blob); } delete pending[nextToZip]; nextToZip++; zipped++; bar.style.width = `${Math.round((zipped/total)*100)}%`; updateStatus(); updateDiag(); } }
+
+      async function processCompatOnce(it){ const interType = willResize ? 'image/png' : toType; const inter = await withTimeout(heic2any({ blob: it.file, toType: interType, quality }), TIMEOUT_MS); let outBlob; if(willResize){ const bmp = await withTimeout(createImageBitmap(inter), TIMEOUT_MS); const m = Math.max(bmp.width, bmp.height); const s = Math.min(1, max/m); const w=Math.max(1, Math.round(bmp.width*s)); const h=Math.max(1, Math.round(bmp.height*s)); outBlob = await progressiveResize(bmp, w, h, toType, quality); } else { outBlob = inter; } return outBlob; }
+      async function processWorkerOnce(it){ const res = await pool.run({ file: it.file, toType, quality, maxSize: willResize? max : 0 }, TIMEOUT_MS); let outBlob = res.blob; if(!res.final){ const bmp = await createImageBitmap(outBlob); const m = Math.max(bmp.width, bmp.height); const s = Math.min(1, max/m); const w=Math.max(1, Math.round(bmp.width*s)); const h=Math.max(1, Math.round(bmp.height*s)); outBlob = await progressiveResize(bmp, w, h, toType, quality); } return outBlob; }
+
+      async function processWithRetries(it, seq){
+        const row = repoList.querySelector(`tr[data-id="${it.id}"] .status`);
+        const fileStart = performance.now();
+        for(let attempt=1; attempt<=MAX_ATTEMPTS; attempt++){
+          if(abort.cancelled) return; // immediate stop
+          if(row){ row.textContent = `Converting (try ${attempt}/${MAX_ATTEMPTS})`; row.className='status run'; }
+          try{
+            const outBlob = usingCompat ? await processCompatOnce(it) : await processWorkerOnce(it);
+            if(abort.cancelled) return; // don't queue if cancelled
+            pending[seq] = { blob: outBlob };
+            if(row){ row.textContent='Done'; row.className='status ok'; }
+            await tryFlush();
+            updateEMA(performance.now()-fileStart); return;
+          }catch(err){
+            if(abort.cancelled) return;
+            if(attempt < MAX_ATTEMPTS){ const backoff = Math.min(8000, 500 * Math.pow(2, attempt-1)); if(row){ row.textContent = `Retrying in ${Math.round(backoff/1000)}s…`; row.className='status run'; } await sleep(backoff); }
+            else { pending[seq] = { skip: true }; if(row){ row.textContent='Skipped'; row.className='status skip'; } failureReport.push({ index: seq, name: it.name, size: it.size, reason: (err?.message||String(err)||'unknown'), attempts: attempt }); await tryFlush(); updateEMA(performance.now()-fileStart); return; }
+          }
+        }
+      }
 
       const next = async ()=>{
-        if(abort.cancelled) return; if(cursor>=items.length) return; if(running>=maxActive) return;
-        const it = items[cursor++]; running++; updateRow(it.id,'Converting','run');
-        const t0 = performance.now();
-        try{
-          const blob = await pool.run({ file: it.file, toType, quality, maxSize: willResize? max : 0 }, 45000);
-          const base = it.name.replace(/\.[^.]+$/, ''); const out = fmtName(baseName.value, base, ++index);
-          await zipEng.add(`${out}.${ext(toType)}`, blob);
-          updateRow(it.id,'Done','ok');
-        }catch(err){ errorsEl.style.display='block'; errorsEl.textContent = `Failed on ${it.name}: ${err?.message||err}`; updateRow(it.id,'Error','err'); slowCount++; }
-        done++; running--; bar.style.width = `${Math.round((done/total)*100)}%`; updateStatus();
-        // adapt concurrency: if many slow/errors, back off
-        const dt = performance.now()-t0; if(dt>12000 && maxActive>1){ maxActive--; }
-        if(!abort.cancelled) next();
+        if(abort.cancelled) return; if(cursor>=items.length) return; if(!usingCompat && running>=targetActive) return;
+        const it = items[cursor++]; const seq = ++assignSeq; it.seq=seq; running++; bySeq[seq]=it; updateDiag();
+        processWithRetries(it, seq).catch(()=>{}).finally(()=>{ running--; updateDiag(); if(!abort.cancelled) next(); });
       };
 
-      // Prime workers
-      for(let i=0;i<maxActive;i++){ next(); }
-      // scheduler loop
-      while((cursor<items.length || running>0) && !abort.cancelled){ await new Promise(r=> setTimeout(r, 50)); next(); }
+      // expose runCtx for hard cancel
+      runCtx = { pool, zipper, usingCompat, targetActive, capacity, pending, bySeq, nextToZip, get running(){return running;}, cancelVisHandler:onVis };
 
-      pool.kill();
+      for(let i=0;i<Math.min(targetActive, items.length); i++) next();
+      while((cursor<items.length || running>0) && !abort.cancelled){ await new Promise(r=> setTimeout(r, 40)); await tryFlush(); next(); }
 
-      if(!abort.cancelled){ statusEl.textContent='📦 Finalizing zip…'; const blob=await zipEng.finalize(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=zipName; a.target='_self'; a.rel='noopener'; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000); statusEl.textContent=`✅ Done. Downloaded ${zipName}`; }
+      // normal completion
+      if(pool) pool.kill();
+      await tryFlush();
+
+      if(!abort.cancelled){ await zipper.finalizeAll(); statusEl.textContent=`✅ Done. ${zipped} file(s) processed${failureReport.length?`, ${failureReport.length} skipped.`:''}`; }
       else { statusEl.textContent='✋ Cancelled.'; }
 
+      if(failureReport.length){ const header = ['index','name','size_bytes','reason','attempts']; const rows = failureReport.map(r=> [r.index, r.name.replaceAll('"','""'), r.size, r.reason.replaceAll('"','""'), r.attempts]); const csv = [header.join(','), ...rows.map(cols=> cols.map(v=> /[",\n]/.test(String(v)) ? `"${v}"` : String(v)).join(','))].join('\n'); const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob); errorsEl.style.display='block'; errorsEl.innerHTML = `Some files were skipped. <a href="${url}" download="heic_convert_errors_${stamp.date}_${stamp.time}.csv">Download error report (.csv)</a>`; setTimeout(()=> URL.revokeObjectURL(url), 60000); }
+
+      document.removeEventListener('visibilitychange', onVis);
+
       cancelBtn.disabled=true; convertBtn.disabled=false; clearBtn.disabled=false; csvInput.disabled=false; picker.disabled=false;
+      runCtx = null; // clear
     });
 
-    cancelBtn.addEventListener('click', ()=>{ abort.cancelled=true; document.querySelector('.progress').classList.add('cancelling'); statusEl.textContent = 'Cancelling…'; });
-    clearBtn.addEventListener('click', ()=>{ abort.cancelled=true; resetUI(); });
+    // ---------- Hard Cancel ----------
+    cancelBtn.addEventListener('click', async ()=>{
+      if(!runCtx){ // legacy or no run
+        showToast('No active conversion.');
+        return;
+      }
+      // (1) Flip abort flag
+      abort.cancelled=true;
+      document.querySelector('.progress').classList.add('cancelling');
+      // (2) Kill workers immediately
+      try{ runCtx.pool && runCtx.pool.kill(); }catch{}
+      // (3) Stop scheduler & listeners
+      try{ document.removeEventListener('visibilitychange', runCtx.cancelVisHandler); }catch{}
+      // (4) Abort zipping & finalize current part safely
+      try{ await runCtx.zipper.cancel(); }catch{}
+      // (5) Fast UI reset (<100ms)
+      statusEl.textContent='🛑 Stopped';
+      bar.style.width='0%';
+      cancelBtn.disabled=true; convertBtn.disabled=false; clearBtn.disabled=false; csvInput.disabled=false; picker.disabled=false;
+      showToast('Conversion stopped');
+      // (6) Clear pending buffers to free memory quickly
+      try{ if(runCtx.pending){ for(const k in runCtx.pending){ delete runCtx.pending[k]; } } }catch{}
+      runCtx=null;
+    });
+
+    clearBtn.addEventListener('click', ()=>{ abort.cancelled=true; items=[]; repoList.innerHTML=''; resetUI(); });
 
     // ---------- Init ----------
     function render(){ renderList(); }
     render(); updateSummary();
 
     // ---------- Service Worker (cache bump) ----------
-    if('serviceWorker' in navigator){ const swCode = `const CACHE='heicconv-v5';self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./'])));self.skipWaiting();});self.addEventListener('activate',e=>self.clients.claim());self.addEventListener('fetch',e=>{const r=e.request;const u=new URL(r.url);if(r.method!=='GET'||u.origin!==location.origin){return;}e.respondWith(caches.match(r).then(m=>m||fetch(r).then(resp=>{const copy=resp.clone();caches.open(CACHE).then(c=>c.put(r,copy)).catch(()=>{});return resp;}).catch(()=>m)));});`; const blob=new Blob([swCode],{type:'text/javascript'}); const url=URL.createObjectURL(blob); navigator.serviceWorker.register(url).catch(()=>{}); }
+    if('serviceWorker' in navigator){ const swCode = `const CACHE='heicconv-v10';self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./'])));self.skipWaiting();});self.addEventListener('activate',e=>self.clients.claim());self.addEventListener('fetch',e=>{const r=e.request;const u=new URL(r.url);if(r.method!=='GET'||u.origin!==location.origin){return;}e.respondWith(caches.match(r).then(m=>m||fetch(r).then(resp=>{const copy=resp.clone();caches.open(CACHE).then(c=>c.put(r,copy)).catch(()=>{});return resp;}).catch(()=>m)));});`; const blob=new Blob([swCode],{type:'text/javascript'}); const url=URL.createObjectURL(blob); navigator.serviceWorker.register(url).catch(()=>{}); }
   </script>
 </body>
 </html>
